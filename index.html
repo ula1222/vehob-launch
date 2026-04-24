@@ -117,12 +117,12 @@
     const mask  = document.createElement('canvas');
     const mctx  = mask.getContext('2d');
 
-    const COLORS      = ['#FF5500','#FF6B00','#E84800','#FF4000','#CC3700','#FF7020','#D94400','#FF4500'];
-    const COUNT       = 4000;
-    const REVEAL_R    = 110;   // radius of reveal brush
-    const REPEL_R     = 100;   // physics repulsion radius
-    const REPEL_FORCE = 3.5;
-    const FRICTION    = 0.90;
+    const COLORS      = ['#FF5500','#FF6B00','#E84800','#FF4000','#CC3700','#FF7020','#D94400','#FF4500','#C23300','#FF5200'];
+    const COUNT       = 8000;
+    const REVEAL_R    = 120;   // radius of reveal brush
+    const REPEL_R     = 110;   // physics repulsion radius
+    const REPEL_FORCE = 5.0;
+    const FRICTION    = 0.78;  // high friction — particles stop quickly, stay put
 
     const pointer = { x: -9999, y: -9999, active: false };
 
@@ -143,15 +143,11 @@
       return {
         x:   rand(0, W),
         y:   rand(0, H),
-        r:   rand(0.5, 2.2),
-        bvx: rand(-0.06, 0.06),
-        bvy: rand(-0.12, -0.02),
+        r:   rand(0.2, 1.1),  // tiny — real dust grain size
         evx: 0,
         evy: 0,
-        baseAlpha:    rand(0.55, 1.0),
-        color:        COLORS[Math.floor(Math.random() * COLORS.length)],
-        twinkle:      rand(0, Math.PI * 2),
-        twinkleSpeed: rand(0.003, 0.015),
+        baseAlpha: rand(0.4, 1.0),
+        color:     COLORS[Math.floor(Math.random() * COLORS.length)],
       };
     }
 
@@ -178,8 +174,8 @@
     function draw() {
       ctx.clearRect(0, 0, W, H);
 
-      // Physics + particle positions
-      particles.forEach((p, i) => {
+      // Physics — particles are STATIC, only move when repelled
+      particles.forEach(p => {
         if (pointer.active) {
           const dx   = p.x - pointer.x;
           const dy   = p.y - pointer.y;
@@ -191,16 +187,17 @@
           }
         }
 
+        // Friction stops them quickly — they settle where they land
         p.evx *= FRICTION;
         p.evy *= FRICTION;
-        p.twinkle += p.twinkleSpeed;
-        p.x += p.bvx + p.evx;
-        p.y += p.bvy + p.evy;
+        p.x   += p.evx;
+        p.y   += p.evy;
 
-        // Wrap
-        if (p.y < -2)  { p.y = H + 2; p.x = rand(0, W); }
-        if (p.x < -2)   p.x = W + 2;
-        if (p.x > W + 2) p.x = -2;
+        // Keep in bounds
+        if (p.x < 0)  p.x = 0;
+        if (p.x > W)  p.x = W;
+        if (p.y < 0)  p.y = 0;
+        if (p.y > H)  p.y = H;
       });
 
       // 1. Draw the black mask (covered areas stay dark, holes are transparent)
@@ -209,10 +206,9 @@
       // 2. Draw particles ONLY on top of covered (opaque) mask areas
       ctx.globalCompositeOperation = 'source-atop';
       particles.forEach(p => {
-        const a = p.baseAlpha * (0.7 + 0.3 * Math.sin(p.twinkle));
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-        ctx.fillStyle = p.color + Math.floor(a * 255).toString(16).padStart(2, '0');
+        ctx.fillStyle = p.color + Math.floor(p.baseAlpha * 255).toString(16).padStart(2, '0');
         ctx.fill();
       });
       ctx.globalCompositeOperation = 'source-over';
