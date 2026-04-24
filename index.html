@@ -105,7 +105,12 @@
     const canvas  = document.getElementById('dust');
     const ctx     = canvas.getContext('2d');
     let W, H, particles, animId;
-    let dismissed = false;
+
+    // Pointer (mouse or touch)
+    const pointer = { x: -9999, y: -9999, active: false };
+    const REPEL_RADIUS = 90;
+    const REPEL_FORCE  = 2.8;
+    const FRICTION     = 0.92; // how fast extra velocity bleeds off (drift back)
 
     const COUNT  = 2000;
     const COLORS = ['#FF5500','#FF6B00','#E84800','#FF4000','#CC3700','#FF7020','#D94400'];
@@ -119,14 +124,18 @@
 
     function makeParticle(fromBottom) {
       return {
-        x:          rand(0, W),
-        y:          fromBottom ? H + rand(0, 8) : rand(0, H),
-        r:          rand(0.2, 0.9),
-        vx:         rand(-0.08, 0.08),
-        vy:         rand(-0.18, -0.03),
-        baseAlpha:  rand(0.25, 0.75),
-        color:      COLORS[Math.floor(Math.random() * COLORS.length)],
-        twinkle:    rand(0, Math.PI * 2),
+        x:    rand(0, W),
+        y:    fromBottom ? H + rand(0, 8) : rand(0, H),
+        r:    rand(0.2, 0.9),
+        // base drift velocity
+        bvx:  rand(-0.08, 0.08),
+        bvy:  rand(-0.18, -0.03),
+        // extra velocity from repulsion
+        evx:  0,
+        evy:  0,
+        baseAlpha:    rand(0.25, 0.75),
+        color:        COLORS[Math.floor(Math.random() * COLORS.length)],
+        twinkle:      rand(0, Math.PI * 2),
         twinkleSpeed: rand(0.003, 0.012),
       };
     }
@@ -138,17 +147,35 @@
 
     function draw() {
       ctx.clearRect(0, 0, W, H);
-      if (dismissed) return;
 
       particles.forEach((p, i) => {
+        // Repulsion from pointer
+        if (pointer.active) {
+          const dx = p.x - pointer.x;
+          const dy = p.y - pointer.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < REPEL_RADIUS && dist > 0) {
+            const force = (1 - dist / REPEL_RADIUS) * REPEL_FORCE;
+            p.evx += (dx / dist) * force;
+            p.evy += (dy / dist) * force;
+          }
+        }
+
+        // Apply friction to extra velocity (drift back)
+        p.evx *= FRICTION;
+        p.evy *= FRICTION;
+
         p.twinkle += p.twinkleSpeed;
-        p.x       += p.vx;
-        p.y       += p.vy;
+        p.x += p.bvx + p.evx;
+        p.y += p.bvy + p.evy;
 
         if (p.y < -2) {
           particles[i] = makeParticle(true);
           return;
         }
+        // wrap horizontally
+        if (p.x < -2)  p.x = W + 2;
+        if (p.x > W+2) p.x = -2;
 
         const a = p.baseAlpha * (0.7 + 0.3 * Math.sin(p.twinkle));
         ctx.beginPath();
@@ -160,32 +187,32 @@
       animId = requestAnimationFrame(draw);
     }
 
-    function dismiss() {
-      if (dismissed) return;
-      dismissed = true;
-      canvas.classList.add('hidden');
-      cancelAnimationFrame(animId);
-    }
-
     // ── Init ────────────────────────────────────────────────────────
     init();
     draw();
 
-    // Dismiss on any interaction
-    window.addEventListener('scroll',     dismiss, { passive: true });
-    window.addEventListener('touchstart', dismiss, { passive: true });
-    window.addEventListener('touchmove',  dismiss, { passive: true });
-    window.addEventListener('click',      dismiss);
-    window.addEventListener('keydown',    dismiss);
+    // Pointer tracking (mouse)
+    window.addEventListener('mousemove', e => {
+      pointer.x = e.clientX;
+      pointer.y = e.clientY;
+      pointer.active = true;
+    });
+    window.addEventListener('mouseleave', () => { pointer.active = false; });
+
+    // Pointer tracking (touch) — no dismiss on move, just repel
+    window.addEventListener('touchmove', e => {
+      pointer.x = e.touches[0].clientX;
+      pointer.y = e.touches[0].clientY;
+      pointer.active = true;
+    }, { passive: true });
+    window.addEventListener('touchend', () => { pointer.active = false; });
 
     window.addEventListener('resize', () => {
       resize();
-      if (!dismissed) {
-        particles.forEach(p => {
-          p.x = rand(0, W);
-          p.y = rand(0, H);
-        });
-      }
+      particles.forEach(p => {
+        p.x = rand(0, W);
+        p.y = rand(0, H);
+      });
     });
   </script>
 </body>
