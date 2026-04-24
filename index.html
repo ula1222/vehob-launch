@@ -107,8 +107,8 @@
     let W, H, particles, animId;
     let dismissed = false;
 
-    const COUNT  = 350;
-    const COLORS = ['#FF6B00','#FF8C00','#FF5500','#FF9A3C','#FFA040','#FF4500','#FFB347','#FFCC00'];
+    const COUNT  = 800;
+    const COLORS = ['#FF6B00','#FF8C00','#FF5500','#FF9A3C','#FFA040','#FF4500','#FFB347'];
 
     function resize() {
       W = canvas.width  = window.innerWidth;
@@ -118,21 +118,16 @@
     function rand(min, max) { return Math.random() * (max - min) + min; }
 
     function makeParticle(fromBottom) {
-      const big = Math.random() < 0.15; // 15% are large glowing embers
       return {
         x:          rand(0, W),
-        y:          fromBottom ? H + rand(0, 40) : rand(0, H),
-        r:          big ? rand(3, 6) : rand(1, 2.8),
-        vx:         rand(-0.3, 0.3),
-        vy:         rand(-1.2, -0.2),
-        baseAlpha:  rand(0.5, 1.0),
+        y:          fromBottom ? H + rand(0, 10) : rand(0, H),
+        r:          rand(0.3, 1.4),
+        vx:         rand(-0.2, 0.2),
+        vy:         rand(-0.35, -0.05),
+        baseAlpha:  rand(0.3, 0.85),
         color:      COLORS[Math.floor(Math.random() * COLORS.length)],
         twinkle:    rand(0, Math.PI * 2),
-        twinkleSpeed: rand(0.02, 0.06),
-        glow:       big ? rand(8, 18) : rand(3, 8),
-        wobble:     rand(0, Math.PI * 2),
-        wobbleSpeed: rand(0.01, 0.03),
-        wobbleAmp:  rand(0.3, 0.8),
+        twinkleSpeed: rand(0.005, 0.02),
       };
     }
 
@@ -147,26 +142,19 @@
 
       particles.forEach((p, i) => {
         p.twinkle += p.twinkleSpeed;
-        p.wobble  += p.wobbleSpeed;
-        p.x       += p.vx + Math.sin(p.wobble) * p.wobbleAmp;
+        p.x       += p.vx;
         p.y       += p.vy;
 
-        if (p.y < -10) {
+        if (p.y < -4) {
           particles[i] = makeParticle(true);
           return;
         }
 
-        const a = p.baseAlpha * (0.55 + 0.45 * Math.sin(p.twinkle));
-        const hex = Math.floor(a * 255).toString(16).padStart(2, '0');
-
-        ctx.save();
-        ctx.shadowColor = p.color;
-        ctx.shadowBlur  = p.glow;
+        const a = p.baseAlpha * (0.6 + 0.4 * Math.sin(p.twinkle));
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-        ctx.fillStyle = p.color + hex;
+        ctx.fillStyle = p.color + Math.floor(a * 255).toString(16).padStart(2, '0');
         ctx.fill();
-        ctx.restore();
       });
 
       animId = requestAnimationFrame(draw);
