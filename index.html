@@ -16,15 +16,13 @@
       font-family: 'Inter', sans-serif;
     }
 
-    /* ── Canvas (particles) ── */
+    /* ── Canvas (particles + mask) ── */
     canvas {
       position: fixed;
       inset: 0;
       pointer-events: none;
       z-index: 10;
-      transition: opacity 1.2s ease;
     }
-    canvas.hidden { opacity: 0; }
 
     /* ── Main layout ── */
     .stage {
@@ -34,7 +32,6 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 0;
       user-select: none;
     }
 
@@ -45,9 +42,6 @@
       letter-spacing: -0.03em;
       line-height: 1;
       color: #fff;
-      opacity: 0;
-      transform: translateY(18px);
-      animation: fadeUp 1.1s cubic-bezier(0.22, 1, 0.36, 1) 0.3s forwards;
     }
 
     /* ── Label ── */
@@ -58,8 +52,6 @@
       letter-spacing: 0.28em;
       text-transform: uppercase;
       color: #ffffff30;
-      opacity: 0;
-      animation: fadeUp 1.1s cubic-bezier(0.22, 1, 0.36, 1) 0.55s forwards;
     }
 
     /* ── Logo ── */
@@ -68,8 +60,6 @@
       bottom: clamp(32px, 5vh, 56px);
       left: 50%;
       transform: translateX(-50%);
-      opacity: 0;
-      animation: fadeUp 1.1s cubic-bezier(0.22, 1, 0.36, 1) 0.8s forwards;
     }
 
     .logo {
@@ -82,8 +72,23 @@
       background-clip: text;
     }
 
-    @keyframes fadeUp {
-      to { opacity: 1; transform: translateY(0); }
+    /* hint */
+    .hint {
+      position: fixed;
+      bottom: clamp(90px, 12vh, 120px);
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: #ffffff18;
+      white-space: nowrap;
+      animation: pulse 2.4s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 0.4; }
+      50%       { opacity: 1; }
     }
   </style>
 </head>
@@ -100,119 +105,146 @@
     <div class="logo">vehob</div>
   </div>
 
+  <div class="hint">swipe to reveal</div>
+
   <script>
-    // ── Particle system ──────────────────────────────────────────────
-    const canvas  = document.getElementById('dust');
-    const ctx     = canvas.getContext('2d');
+    // ── Setup ─────────────────────────────────────────────────────────
+    const canvas = document.getElementById('dust');
+    const ctx    = canvas.getContext('2d');
     let W, H, particles, animId;
 
-    // Pointer (mouse or touch)
+    // Offscreen mask: black = covered, transparent hole = revealed
+    const mask  = document.createElement('canvas');
+    const mctx  = mask.getContext('2d');
+
+    const COLORS      = ['#FF5500','#FF6B00','#E84800','#FF4000','#CC3700','#FF7020','#D94400','#FF4500'];
+    const COUNT       = 4000;
+    const REVEAL_R    = 110;   // radius of reveal brush
+    const REPEL_R     = 100;   // physics repulsion radius
+    const REPEL_FORCE = 3.5;
+    const FRICTION    = 0.90;
+
     const pointer = { x: -9999, y: -9999, active: false };
-    const REPEL_RADIUS = 90;
-    const REPEL_FORCE  = 2.8;
-    const FRICTION     = 0.92; // how fast extra velocity bleeds off (drift back)
 
-    const COUNT  = 2000;
-    const COLORS = ['#FF5500','#FF6B00','#E84800','#FF4000','#CC3700','#FF7020','#D94400'];
-
+    // ── Resize ────────────────────────────────────────────────────────
     function resize() {
-      W = canvas.width  = window.innerWidth;
-      H = canvas.height = window.innerHeight;
+      W = canvas.width = mask.width = window.innerWidth;
+      H = canvas.height = mask.height = window.innerHeight;
+      // Fill mask solid black — everything covered
+      mctx.globalCompositeOperation = 'source-over';
+      mctx.fillStyle = '#000';
+      mctx.fillRect(0, 0, W, H);
     }
 
     function rand(min, max) { return Math.random() * (max - min) + min; }
 
-    function makeParticle(fromBottom) {
+    // ── Particles ─────────────────────────────────────────────────────
+    function makeParticle() {
       return {
-        x:    rand(0, W),
-        y:    fromBottom ? H + rand(0, 8) : rand(0, H),
-        r:    rand(0.2, 0.9),
-        // base drift velocity
-        bvx:  rand(-0.08, 0.08),
-        bvy:  rand(-0.18, -0.03),
-        // extra velocity from repulsion
-        evx:  0,
-        evy:  0,
-        baseAlpha:    rand(0.25, 0.75),
+        x:   rand(0, W),
+        y:   rand(0, H),
+        r:   rand(0.5, 2.2),
+        bvx: rand(-0.06, 0.06),
+        bvy: rand(-0.12, -0.02),
+        evx: 0,
+        evy: 0,
+        baseAlpha:    rand(0.55, 1.0),
         color:        COLORS[Math.floor(Math.random() * COLORS.length)],
         twinkle:      rand(0, Math.PI * 2),
-        twinkleSpeed: rand(0.003, 0.012),
+        twinkleSpeed: rand(0.003, 0.015),
       };
     }
 
     function init() {
       resize();
-      particles = Array.from({ length: COUNT }, () => makeParticle(false));
+      particles = Array.from({ length: COUNT }, makeParticle);
     }
 
+    // ── Reveal brush — cuts a transparent hole in the mask ────────────
+    function revealAt(x, y) {
+      mctx.globalCompositeOperation = 'destination-out';
+      const g = mctx.createRadialGradient(x, y, 0, x, y, REVEAL_R);
+      g.addColorStop(0,   'rgba(0,0,0,1)');
+      g.addColorStop(0.5, 'rgba(0,0,0,0.85)');
+      g.addColorStop(1,   'rgba(0,0,0,0)');
+      mctx.fillStyle = g;
+      mctx.beginPath();
+      mctx.arc(x, y, REVEAL_R, 0, Math.PI * 2);
+      mctx.fill();
+      mctx.globalCompositeOperation = 'source-over';
+    }
+
+    // ── Draw loop ─────────────────────────────────────────────────────
     function draw() {
       ctx.clearRect(0, 0, W, H);
 
+      // Physics + particle positions
       particles.forEach((p, i) => {
-        // Repulsion from pointer
         if (pointer.active) {
-          const dx = p.x - pointer.x;
-          const dy = p.y - pointer.y;
+          const dx   = p.x - pointer.x;
+          const dy   = p.y - pointer.y;
           const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist < REPEL_RADIUS && dist > 0) {
-            const force = (1 - dist / REPEL_RADIUS) * REPEL_FORCE;
+          if (dist < REPEL_R && dist > 0) {
+            const force = (1 - dist / REPEL_R) * REPEL_FORCE;
             p.evx += (dx / dist) * force;
             p.evy += (dy / dist) * force;
           }
         }
 
-        // Apply friction to extra velocity (drift back)
         p.evx *= FRICTION;
         p.evy *= FRICTION;
-
         p.twinkle += p.twinkleSpeed;
         p.x += p.bvx + p.evx;
         p.y += p.bvy + p.evy;
 
-        if (p.y < -2) {
-          particles[i] = makeParticle(true);
-          return;
-        }
-        // wrap horizontally
-        if (p.x < -2)  p.x = W + 2;
-        if (p.x > W+2) p.x = -2;
+        // Wrap
+        if (p.y < -2)  { p.y = H + 2; p.x = rand(0, W); }
+        if (p.x < -2)   p.x = W + 2;
+        if (p.x > W + 2) p.x = -2;
+      });
 
+      // 1. Draw the black mask (covered areas stay dark, holes are transparent)
+      ctx.drawImage(mask, 0, 0);
+
+      // 2. Draw particles ONLY on top of covered (opaque) mask areas
+      ctx.globalCompositeOperation = 'source-atop';
+      particles.forEach(p => {
         const a = p.baseAlpha * (0.7 + 0.3 * Math.sin(p.twinkle));
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
         ctx.fillStyle = p.color + Math.floor(a * 255).toString(16).padStart(2, '0');
         ctx.fill();
       });
+      ctx.globalCompositeOperation = 'source-over';
 
       animId = requestAnimationFrame(draw);
     }
 
-    // ── Init ────────────────────────────────────────────────────────
+    // ── Init ──────────────────────────────────────────────────────────
     init();
     draw();
 
-    // Pointer tracking (mouse)
+    // ── Pointer events ────────────────────────────────────────────────
     window.addEventListener('mousemove', e => {
       pointer.x = e.clientX;
       pointer.y = e.clientY;
       pointer.active = true;
+      revealAt(e.clientX, e.clientY);
     });
     window.addEventListener('mouseleave', () => { pointer.active = false; });
 
-    // Pointer tracking (touch) — no dismiss on move, just repel
     window.addEventListener('touchmove', e => {
-      pointer.x = e.touches[0].clientX;
-      pointer.y = e.touches[0].clientY;
+      const t = e.touches[0];
+      pointer.x = t.clientX;
+      pointer.y = t.clientY;
       pointer.active = true;
+      revealAt(t.clientX, t.clientY);
     }, { passive: true });
-    window.addEventListener('touchend', () => { pointer.active = false; });
+    window.addEventListener('touchend',  () => { pointer.active = false; });
 
     window.addEventListener('resize', () => {
       resize();
-      particles.forEach(p => {
-        p.x = rand(0, W);
-        p.y = rand(0, H);
-      });
+      particles.forEach(p => { p.x = rand(0, W); p.y = rand(0, H); });
     });
   </script>
 </body>
