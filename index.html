@@ -118,11 +118,11 @@
     const mctx  = mask.getContext('2d');
 
     const COLORS      = ['#FF5500','#FF6B00','#E84800','#FF4000','#CC3700','#FF7020','#D94400','#FF4500','#C23300','#FF5200'];
-    const COUNT       = 8000;
-    const REVEAL_R    = 120;   // radius of reveal brush
-    const REPEL_R     = 110;   // physics repulsion radius
-    const REPEL_FORCE = 5.0;
-    const FRICTION    = 0.78;  // high friction — particles stop quickly, stay put
+    const COUNT       = 3000;  // visible flying particles on swipe
+    const REVEAL_R    = 130;
+    const REPEL_R     = 130;
+    const REPEL_FORCE = 8.0;
+    const FRICTION    = 0.82;
 
     const pointer = { x: -9999, y: -9999, active: false };
 
@@ -135,36 +135,54 @@
 
     function rand(min, max) { return Math.random() * (max - min) + min; }
 
-    // ── Build mask: solid orange fill + grain texture ─────────────────
+    // ── Build mask: solid fill + layered grain for real dust texture ───
     function buildMask() {
       mctx.globalCompositeOperation = 'source-over';
-      // Base solid fill — guarantees 100% coverage
-      mctx.fillStyle = '#C83800';
+
+      // Base coat
+      mctx.fillStyle = '#B83200';
       mctx.fillRect(0, 0, W, H);
-      // Grain texture on top for real dust look
-      for (let i = 0; i < 20000; i++) {
-        const x = rand(0, W);
-        const y = rand(0, H);
-        const r = rand(0.3, 1.4);
-        const c = COLORS[Math.floor(Math.random() * COLORS.length)];
-        const a = rand(0.3, 0.85);
+
+      // Layer 1 — large soft blobs for depth
+      for (let i = 0; i < 3000; i++) {
+        const x = rand(0, W), y = rand(0, H);
+        const r = rand(3, 14);
+        const a = rand(0.05, 0.25);
         mctx.beginPath();
         mctx.arc(x, y, r, 0, Math.PI * 2);
-        mctx.fillStyle = c + Math.floor(a * 255).toString(16).padStart(2, '0');
+        mctx.fillStyle = COLORS[Math.floor(Math.random() * COLORS.length)] + Math.floor(a * 255).toString(16).padStart(2,'0');
         mctx.fill();
+      }
+
+      // Layer 2 — medium grains
+      for (let i = 0; i < 25000; i++) {
+        const x = rand(0, W), y = rand(0, H);
+        const r = rand(0.4, 2.2);
+        const a = rand(0.3, 0.9);
+        mctx.beginPath();
+        mctx.arc(x, y, r, 0, Math.PI * 2);
+        mctx.fillStyle = COLORS[Math.floor(Math.random() * COLORS.length)] + Math.floor(a * 255).toString(16).padStart(2,'0');
+        mctx.fill();
+      }
+
+      // Layer 3 — micro dust specks
+      for (let i = 0; i < 40000; i++) {
+        const x = rand(0, W), y = rand(0, H);
+        mctx.fillStyle = COLORS[Math.floor(Math.random() * COLORS.length)] + Math.floor(rand(0.2, 0.7) * 255).toString(16).padStart(2,'0');
+        mctx.fillRect(x, y, rand(0.3, 1.0), rand(0.3, 1.0));
       }
     }
 
-    // ── Particles (physics only — scatter on touch) ───────────────────
+    // ── Flying particles — scatter visibly on swipe ───────────────────
     function makeParticle() {
       return {
-        x:   rand(0, W),
-        y:   rand(0, H),
-        r:   rand(0.4, 1.6),
-        evx: 0,
-        evy: 0,
+        x:    rand(0, W),
+        y:    rand(0, H),
+        r:    rand(1.0, 3.5),
+        evx:  0,
+        evy:  0,
         color: COLORS[Math.floor(Math.random() * COLORS.length)],
-        alpha: rand(0.5, 1.0),
+        alpha: rand(0.7, 1.0),
       };
     }
 
@@ -178,7 +196,7 @@
       mctx.globalCompositeOperation = 'destination-out';
       const g = mctx.createRadialGradient(x, y, 0, x, y, REVEAL_R);
       g.addColorStop(0,   'rgba(0,0,0,1)');
-      g.addColorStop(0.5, 'rgba(0,0,0,0.85)');
+      g.addColorStop(0.4, 'rgba(0,0,0,0.95)');
       g.addColorStop(1,   'rgba(0,0,0,0)');
       mctx.fillStyle = g;
       mctx.beginPath();
@@ -191,7 +209,7 @@
     function draw() {
       ctx.clearRect(0, 0, W, H);
 
-      // Physics — particles are STATIC, only move when repelled
+      // Update physics
       particles.forEach(p => {
         if (pointer.active) {
           const dx   = p.x - pointer.x;
@@ -203,32 +221,30 @@
             p.evy += (dy / dist) * force;
           }
         }
-
-        // Friction stops them quickly — they settle where they land
         p.evx *= FRICTION;
         p.evy *= FRICTION;
         p.x   += p.evx;
         p.y   += p.evy;
-
-        // Keep in bounds
-        if (p.x < 0)  p.x = 0;
-        if (p.x > W)  p.x = W;
-        if (p.y < 0)  p.y = 0;
-        if (p.y > H)  p.y = H;
+        if (p.x < 0) p.x = 0;
+        if (p.x > W) p.x = W;
+        if (p.y < 0) p.y = 0;
+        if (p.y > H) p.y = H;
       });
 
-      // 1. Draw the mask — solid orange dust cover with grain texture, holes = revealed
+      // 1. Draw mask (full orange dust with holes cut by user)
       ctx.drawImage(mask, 0, 0);
 
-      // 2. Scattered physics particles drawn on top (visible in covered areas only)
-      ctx.globalCompositeOperation = 'source-atop';
+      // 2. Flying particles drawn on TOP of everything — visible everywhere
+      //    so you see them scatter across both covered and revealed areas
+      ctx.globalCompositeOperation = 'source-over';
       particles.forEach(p => {
+        const speed = Math.sqrt(p.evx * p.evx + p.evy * p.evy);
+        if (speed < 0.08) return; // only draw when actually moving
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-        ctx.fillStyle = p.color + Math.floor(p.alpha * 255).toString(16).padStart(2, '0');
+        ctx.fillStyle = p.color + Math.floor(Math.min(speed * 0.4, 1) * p.alpha * 255).toString(16).padStart(2,'0');
         ctx.fill();
       });
-      ctx.globalCompositeOperation = 'source-over';
 
       animId = requestAnimationFrame(draw);
     }
