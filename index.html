@@ -107,8 +107,8 @@
     let W, H, particles, animId;
     let dismissed = false;
 
-    const COUNT   = 120;
-    const COLORS  = ['#FF6B00','#FF8C00','#FF5500','#FF9A3C','#FFA040','#FF4500'];
+    const COUNT   = 600;
+    const COLORS  = ['#FF6B00','#FF8C00','#FF5500','#FF9A3C','#FFA040','#FF4500','#FFB347','#FF6000'];
 
     function resize() {
       W = canvas.width  = window.innerWidth;
@@ -117,24 +117,24 @@
 
     function rand(min, max) { return Math.random() * (max - min) + min; }
 
-    function makeParticle() {
+    function makeParticle(fromBottom) {
       return {
         x:    rand(0, W),
-        y:    rand(0, H),
-        r:    rand(1.5, 4.5),
-        vx:   rand(-0.4, 0.4),
-        vy:   rand(-0.6, -0.15),
-        alpha: rand(0.4, 0.9),
+        y:    fromBottom ? H + rand(0, 20) : rand(0, H),
+        r:    rand(0.8, 3.5),
+        vx:   rand(-0.5, 0.5),
+        vy:   rand(-0.8, -0.1),
+        alpha: rand(0.3, 1.0),
         color: COLORS[Math.floor(Math.random() * COLORS.length)],
-        decay: rand(0.0015, 0.003),
+        decay: rand(0.001, 0.0025),
         twinkle: rand(0, Math.PI * 2),
-        twinkleSpeed: rand(0.01, 0.03),
+        twinkleSpeed: rand(0.008, 0.025),
       };
     }
 
     function init() {
       resize();
-      particles = Array.from({ length: COUNT }, makeParticle);
+      particles = Array.from({ length: COUNT }, () => makeParticle(false));
     }
 
     function draw() {
@@ -148,9 +148,7 @@
         p.y          += p.vy;
 
         if (p.alpha <= 0 || p.y < -10) {
-          particles[i] = makeParticle();
-          particles[i].y = H + 5; // respawn from bottom
-          particles[i].alpha = rand(0.4, 0.9);
+          particles[i] = makeParticle(true);
         }
 
         const a = p.alpha * (0.7 + 0.3 * Math.sin(p.twinkle));
