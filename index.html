@@ -63,12 +63,13 @@
 
     // ── Grid ─────────────────────────────────────────────────────────
     const GRID       = 3;    // px per cell
-    const PUSH_R     = 70;   // push brush radius px
-    const PUSH_FORCE = 2.8;  // how hard cursor pushes
-    const FRICTION   = 0.87; // velocity decay
-    const FLOW       = 0.38; // height transfer per frame per speed unit
+    const PUSH_R     = 65;   // push brush radius px
+    const PUSH_FORCE = 2.2;  // how hard cursor pushes
+    const FRICTION   = 0.89; // velocity decay
+    const FLOW       = 0.18; // height transfer per frame (lower = less clean channel)
     const NORM_SCALE = 7;    // normal gradient — 3D depth intensity
     const GRAIN_NS   = 0.5;  // per-grain normal jitter
+    const MIN_H      = 0.22; // powder never fully disappears — no black void
 
     let H_cur, H_nxt, VX, VY, GR, GG, GB, GNX, GNY;
 
@@ -120,14 +121,14 @@
       imgData = ctx.createImageData(W, H);
     }
 
-    // ── Push: velocity in swipe direction + radial spread ─────────────
+    // ── Push: chaotic scatter, not a clean eraser line ────────────────
     function push(px, py) {
       const speed = Math.sqrt(vX*vX + vY*vY);
-      const cx = (px / GRID) | 0;
-      const cy = (py / GRID) | 0;
-      const br = (PUSH_R / GRID) | 0;
+      if (speed < 0.1) return;
 
-      // Normalized swipe direction
+      const cx   = (px / GRID) | 0;
+      const cy   = (py / GRID) | 0;
+      const br   = (PUSH_R / GRID) | 0;
       const slen = Math.max(speed, 0.001);
       const sdx  = vX / slen, sdy = vY / slen;
 
@@ -137,18 +138,43 @@
           if (nc < 1 || nc >= cols-1 || nr < 1 || nr >= rows-1) continue;
           const d2 = dx*dx + dy*dy;
           if (d2 >= br*br || d2 < 0.5) continue;
-          const d = Math.sqrt(d2);
+
+          // ── Random skip: ~48% of grains don't get pushed ──
+          if (Math.random() > 0.52) continue;
+
+          const d       = Math.sqrt(d2);
           const falloff = (1 - d/br) * (1 - d/br);
+          const rdx     = dx/d, rdy = dy/d;
 
-          // Push direction = 70% swipe direction + 30% radial outward
-          const rdx = dx/d, rdy = dy/d;
-          const pdx = sdx*0.7 + rdx*0.3;
-          const pdy = sdy*0.7 + rdy*0.3;
+          // ── Large random angle deviation per grain ──
+          const angleNoise = (Math.random() - 0.5) * 1.4; // ±0.7 rad
+          const cos = Math.cos(angleNoise), sin = Math.sin(angleNoise);
+          const noiseX = sdx*cos - sdy*sin;
+          const noiseY = sdx*sin + sdy*cos;
 
-          const f   = falloff * PUSH_FORCE * Math.min(speed * 0.4 + 0.5, 3.0);
+          // Mix: swipe + radial + pure random
+          const pdx = noiseX*0.45 + rdx*0.25 + (Math.random()-0.5)*0.6;
+          const pdy = noiseY*0.45 + rdy*0.25 + (Math.random()-0.5)*0.6;
+
+          const f   = falloff * PUSH_FORCE * (0.4 + Math.random()*1.0) * Math.min(speed*0.3+0.5, 2.5);
           const idx = nr * cols + nc;
           VX[idx] += pdx * f;
           VY[idx] += pdy * f;
+        }
+      }
+
+      // ── Turbulence ring beyond brush — dusting cloud effect ──
+      const turR = (br * 1.7) | 0;
+      for (let dy = -turR; dy <= turR; dy++) {
+        for (let dx = -turR; dx <= turR; dx++) {
+          const nc = cx+dx, nr = cy+dy;
+          if (nc<1||nc>=cols-1||nr<1||nr>=rows-1) continue;
+          const d2 = dx*dx+dy*dy;
+          if (d2 < br*br || d2 >= turR*turR) continue;
+          if (Math.random() > 0.10) continue; // sparse — only 10% of ring cells
+          const idx = nr*cols+nc;
+          VX[idx] += (Math.random()-0.5) * speed * 0.18;
+          VY[idx] += (Math.random()-0.5) * speed * 0.18;
         }
       }
     }
@@ -182,7 +208,22 @@
             H_nxt[i]         -= fy;
             H_nxt[tr*cols+c] += fy;
           }
+
+          // Random scatter: disturbed cells shed tiny amount in all 4 dirs
+          if (spd > 0.3) {
+            const shed = H_cur[i] * 0.012 * Math.random();
+            H_nxt[i]            -= shed * 4;
+            H_nxt[i+1]          += shed;
+            H_nxt[i-1]          += shed;
+            H_nxt[i+cols]       += shed;
+            H_nxt[i-cols]       += shed;
+          }
         }
+      }
+
+      // Enforce minimum — powder never fully vanishes (no black eraser hole)
+      for (let i = 0; i < N; i++) {
+        if (H_nxt[i] < MIN_H) H_nxt[i] = MIN_H;
       }
 
       const tmp = H_cur; H_cur = H_nxt; H_nxt = tmp;
