@@ -64,12 +64,11 @@
     // ── Grid ─────────────────────────────────────────────────────────
     const GRID       = 3;    // px per cell
     const PUSH_R     = 65;   // push brush radius px
-    const PUSH_FORCE = 2.2;  // how hard cursor pushes
-    const FRICTION   = 0.89; // velocity decay
-    const FLOW       = 0.18; // height transfer per frame (lower = less clean channel)
+    const PUSH_FORCE = 4.0;  // how hard cursor pushes
+    const FRICTION   = 0.88; // velocity decay
+    const FLOW       = 0.32; // height transfer per frame
     const NORM_SCALE = 7;    // normal gradient — 3D depth intensity
     const GRAIN_NS   = 0.5;  // per-grain normal jitter
-    const MIN_H      = 0.22; // powder never fully disappears — no black void
 
     let H_cur, H_nxt, VX, VY, GR, GG, GB, GNX, GNY;
 
@@ -221,11 +220,6 @@
         }
       }
 
-      // Enforce minimum — powder never fully vanishes (no black eraser hole)
-      for (let i = 0; i < N; i++) {
-        if (H_nxt[i] < MIN_H) H_nxt[i] = MIN_H;
-      }
-
       const tmp = H_cur; H_cur = H_nxt; H_nxt = tmp;
     }
 
@@ -266,8 +260,8 @@
           const R   = cl(GR[i] * light * hb + sp * 255);
           const G   = cl(GG[i] * light * hb + sp * 210);
           const B   = cl(GB[i] * light * hb + sp * 170);
-          // Where powder is pushed thin, content shows through
-          const A   = cl(Math.min(h * 1.15, 1.0) * 255);
+          // Content shows through as powder scatters
+          const A   = cl(Math.min(h, 1.0) * 255);
 
           const px0 = c * GRID, py0 = r * GRID;
           for (let dy = 0; dy < GRID; dy++) {
