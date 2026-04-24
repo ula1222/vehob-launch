@@ -16,7 +16,6 @@
       font-family: 'Inter', sans-serif;
     }
 
-    /* ── Canvas (particles + mask) ── */
     canvas {
       position: fixed;
       inset: 0;
@@ -24,7 +23,6 @@
       z-index: 10;
     }
 
-    /* ── Main layout ── */
     .stage {
       position: fixed;
       inset: 0;
@@ -35,7 +33,6 @@
       user-select: none;
     }
 
-    /* ── Date ── */
     .date {
       font-size: clamp(48px, 12vw, 140px);
       font-weight: 900;
@@ -44,7 +41,6 @@
       color: #fff;
     }
 
-    /* ── Label ── */
     .label {
       margin-top: 18px;
       font-size: clamp(11px, 1.6vw, 15px);
@@ -54,7 +50,6 @@
       color: #ffffff30;
     }
 
-    /* ── Logo ── */
     .logo-wrap {
       position: fixed;
       bottom: clamp(32px, 5vh, 56px);
@@ -72,7 +67,6 @@
       background-clip: text;
     }
 
-    /* hint */
     .hint {
       position: fixed;
       bottom: clamp(90px, 12vh, 120px);
@@ -86,10 +80,7 @@
       white-space: nowrap;
       animation: pulse 2.4s ease-in-out infinite;
     }
-    @keyframes pulse {
-      0%, 100% { opacity: 0.4; }
-      50%       { opacity: 1; }
-    }
+    @keyframes pulse { 0%,100%{opacity:.3} 50%{opacity:.9} }
   </style>
 </head>
 <body>
@@ -108,173 +99,171 @@
   <div class="hint">swipe to reveal</div>
 
   <script>
-    // ── Setup ─────────────────────────────────────────────────────────
     const canvas = document.getElementById('dust');
     const ctx    = canvas.getContext('2d');
-    let W, H, particles, animId;
+    let W, H, animId;
 
-    // Offscreen mask: black = covered, transparent hole = revealed
-    const mask  = document.createElement('canvas');
-    const mctx  = mask.getContext('2d');
+    // ── Grid ─────────────────────────────────────────────────────────
+    const GRID     = 3;    // px per cell — finer = more detail
+    const BRUSH_R  = 42;   // reveal brush radius (px)
+    const STRENGTH = 0.22; // how much sand removed per frame
+    const PILE     = 0.07; // sand piles at brush edge
 
-    const COLORS      = ['#FF5500','#FF6B00','#E84800','#FF4000','#CC3700','#FF7020','#D94400','#FF4500','#C23300','#FF5200'];
-    const COUNT       = 3000;  // visible flying particles on swipe
-    const REVEAL_R    = 55;
-    const REPEL_R     = 55;
-    const REPEL_FORCE = 6.0;
-    const FRICTION    = 0.82;
+    let cols, rows;
+    let heights;   // Float32Array — 0 (cleared) to 1+ (piled)
+    let grainR, grainG, grainB; // pre-baked per-cell color jitter
+    let imageData;
 
     const pointer = { x: -9999, y: -9999, active: false };
 
-    // ── Resize ────────────────────────────────────────────────────────
+    function rand(a, b) { return Math.random() * (b - a) + a; }
+
+    // ── Init grid ────────────────────────────────────────────────────
     function resize() {
-      W = canvas.width = mask.width = window.innerWidth;
-      H = canvas.height = mask.height = window.innerHeight;
-      buildMask();
-    }
+      W = canvas.width  = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+      cols = Math.ceil(W / GRID);
+      rows = Math.ceil(H / GRID);
 
-    function rand(min, max) { return Math.random() * (max - min) + min; }
+      heights = new Float32Array(cols * rows);
+      grainR  = new Uint8Array(cols * rows);
+      grainG  = new Uint8Array(cols * rows);
+      grainB  = new Uint8Array(cols * rows);
 
-    // ── Build mask: solid fill + layered grain for real dust texture ───
-    function buildMask() {
-      mctx.globalCompositeOperation = 'source-over';
-
-      // Base coat
-      mctx.fillStyle = '#B83200';
-      mctx.fillRect(0, 0, W, H);
-
-      // Layer 1 — large soft blobs for depth
-      for (let i = 0; i < 3000; i++) {
-        const x = rand(0, W), y = rand(0, H);
-        const r = rand(3, 14);
-        const a = rand(0.05, 0.25);
-        mctx.beginPath();
-        mctx.arc(x, y, r, 0, Math.PI * 2);
-        mctx.fillStyle = COLORS[Math.floor(Math.random() * COLORS.length)] + Math.floor(a * 255).toString(16).padStart(2,'0');
-        mctx.fill();
+      for (let i = 0; i < cols * rows; i++) {
+        // Slight height variation for natural surface unevenness
+        heights[i] = rand(0.88, 1.12);
+        // Per-grain color — orange/red/rust range
+        grainR[i] = rand(160, 255) | 0;
+        grainG[i] = rand(45,  115) | 0;
+        grainB[i] = rand(0,   28)  | 0;
       }
 
-      // Layer 2 — medium grains
-      for (let i = 0; i < 25000; i++) {
-        const x = rand(0, W), y = rand(0, H);
-        const r = rand(0.4, 2.2);
-        const a = rand(0.3, 0.9);
-        mctx.beginPath();
-        mctx.arc(x, y, r, 0, Math.PI * 2);
-        mctx.fillStyle = COLORS[Math.floor(Math.random() * COLORS.length)] + Math.floor(a * 255).toString(16).padStart(2,'0');
-        mctx.fill();
-      }
-
-      // Layer 3 — micro dust specks
-      for (let i = 0; i < 40000; i++) {
-        const x = rand(0, W), y = rand(0, H);
-        mctx.fillStyle = COLORS[Math.floor(Math.random() * COLORS.length)] + Math.floor(rand(0.2, 0.7) * 255).toString(16).padStart(2,'0');
-        mctx.fillRect(x, y, rand(0.3, 1.0), rand(0.3, 1.0));
-      }
+      imageData = ctx.createImageData(W, H);
     }
 
-    // ── Flying particles — scatter visibly on swipe ───────────────────
-    function makeParticle() {
-      return {
-        x:    rand(0, W),
-        y:    rand(0, H),
-        r:    rand(1.0, 3.5),
-        evx:  0,
-        evy:  0,
-        color: COLORS[Math.floor(Math.random() * COLORS.length)],
-        alpha: rand(0.7, 1.0),
-      };
-    }
+    // ── Brush: remove sand + pile at edge ────────────────────────────
+    function applyBrush(px, py) {
+      const cx  = px / GRID;
+      const cy  = py / GRID;
+      const br  = BRUSH_R / GRID;
+      const br2 = br * 1.65;
+      const ceil = Math.ceil(br2);
 
-    function init() {
-      resize();
-      particles = Array.from({ length: COUNT }, makeParticle);
-    }
-
-    // ── Reveal brush — cuts a transparent hole in the mask ────────────
-    function revealAt(x, y) {
-      mctx.globalCompositeOperation = 'destination-out';
-      const g = mctx.createRadialGradient(x, y, 0, x, y, REVEAL_R);
-      g.addColorStop(0,   'rgba(0,0,0,1)');
-      g.addColorStop(0.4, 'rgba(0,0,0,0.95)');
-      g.addColorStop(1,   'rgba(0,0,0,0)');
-      mctx.fillStyle = g;
-      mctx.beginPath();
-      mctx.arc(x, y, REVEAL_R, 0, Math.PI * 2);
-      mctx.fill();
-      mctx.globalCompositeOperation = 'source-over';
-    }
-
-    // ── Draw loop ─────────────────────────────────────────────────────
-    function draw() {
-      ctx.clearRect(0, 0, W, H);
-
-      // Update physics
-      particles.forEach(p => {
-        if (pointer.active) {
-          const dx   = p.x - pointer.x;
-          const dy   = p.y - pointer.y;
+      for (let dy = -ceil; dy <= ceil; dy++) {
+        for (let dx = -ceil; dx <= ceil; dx++) {
+          const nx = (cx + dx) | 0;
+          const ny = (cy + dy) | 0;
+          if (nx < 1 || nx >= cols - 1 || ny < 1 || ny >= rows - 1) continue;
           const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist < REPEL_R && dist > 0) {
-            const force = (1 - dist / REPEL_R) * REPEL_FORCE;
-            p.evx += (dx / dist) * force;
-            p.evy += (dy / dist) * force;
+          const idx  = ny * cols + nx;
+
+          if (dist < br) {
+            // Cosine falloff — smooth center removal
+            const f = Math.cos((dist / br) * Math.PI * 0.5);
+            heights[idx] = Math.max(0, heights[idx] - f * STRENGTH);
+          } else if (dist < br2) {
+            // Pile at edge — sand displaced outward
+            const t    = (dist - br) / (br2 - br);
+            const edge = (1 - t) * (1 - t);
+            heights[idx] = Math.min(1.6, heights[idx] + edge * PILE);
           }
         }
-        p.evx *= FRICTION;
-        p.evy *= FRICTION;
-        p.x   += p.evx;
-        p.y   += p.evy;
-        if (p.x < 0) p.x = 0;
-        if (p.x > W) p.x = W;
-        if (p.y < 0) p.y = 0;
-        if (p.y > H) p.y = H;
-      });
+      }
+    }
 
-      // 1. Draw mask (full orange dust with holes cut by user)
-      ctx.drawImage(mask, 0, 0);
+    // ── Render height map with 3-D lighting ──────────────────────────
+    function render() {
+      const data = imageData.data;
 
-      // 2. Flying particles drawn on TOP of everything — visible everywhere
-      //    so you see them scatter across both covered and revealed areas
-      ctx.globalCompositeOperation = 'source-over';
-      particles.forEach(p => {
-        const speed = Math.sqrt(p.evx * p.evx + p.evy * p.evy);
-        if (speed < 0.08) return; // only draw when actually moving
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-        ctx.fillStyle = p.color + Math.floor(Math.min(speed * 0.4, 1) * p.alpha * 255).toString(16).padStart(2,'0');
-        ctx.fill();
-      });
+      // Light direction (top-left, angled)
+      const LX = -0.45, LY = -0.75, LZ = 0.85;
+      const LL = Math.sqrt(LX*LX + LY*LY + LZ*LZ);
+      const nlx = LX/LL, nly = LY/LL, nlz = LZ/LL;
 
+      for (let row = 1; row < rows - 1; row++) {
+        for (let col = 1; col < cols - 1; col++) {
+          const idx = row * cols + col;
+          const h   = heights[idx];
+
+          if (h <= 0.01) {
+            // Transparent — content shows through
+            const px0 = col * GRID, py0 = row * GRID;
+            for (let dy = 0; dy < GRID; dy++) {
+              let pi = ((py0 + dy) * W + px0) * 4;
+              for (let dx = 0; dx < GRID; dx++, pi += 4)
+                data[pi+3] = 0;
+            }
+            continue;
+          }
+
+          // Surface normal from height gradient
+          const gx = (heights[idx + 1]    - heights[idx - 1])    * 3.0;
+          const gy = (heights[idx + cols] - heights[idx - cols]) * 3.0;
+          const gz = 1.0;
+          const glen = Math.sqrt(gx*gx + gy*gy + gz*gz);
+          const nx = -gx/glen, ny = -gy/glen, nz = gz/glen;
+
+          // Diffuse (Lambertian)
+          const ndotl   = nx*nlx + ny*nly + nz*nlz;
+          const diffuse  = Math.max(0, ndotl);
+          const light    = 0.28 + 0.72 * diffuse;
+
+          // Specular (Blinn-Phong, view from above = (0,0,1))
+          const hx = nlx + 0, hy = nly + 0, hz = nlz + 1;
+          const hlen = Math.sqrt(hx*hx + hy*hy + hz*hz);
+          const spec = Math.pow(Math.max(0, nx*(hx/hlen) + ny*(hy/hlen) + nz*(hz/hlen)), 18) * 0.55;
+
+          // Pile areas slightly brighter
+          const heightBoost = Math.min(1, (h - 1) * 0.6 + 1);
+
+          const clamp = v => v < 0 ? 0 : v > 255 ? 255 : v | 0;
+          const r = clamp(grainR[idx] * light * heightBoost + spec * 255);
+          const g = clamp(grainG[idx] * light * heightBoost + spec * 200);
+          const b = clamp(grainB[idx] * light * heightBoost + spec * 160);
+          const a = Math.min(255, (Math.min(h, 1) * 255) | 0);
+
+          // Write GRID×GRID pixel block
+          const px0 = col * GRID, py0 = row * GRID;
+          for (let dy = 0; dy < GRID; dy++) {
+            let pi = ((py0 + dy) * W + px0) * 4;
+            for (let dx = 0; dx < GRID; dx++, pi += 4) {
+              data[pi]   = r;
+              data[pi+1] = g;
+              data[pi+2] = b;
+              data[pi+3] = a;
+            }
+          }
+        }
+      }
+
+      ctx.putImageData(imageData, 0, 0);
+    }
+
+    // ── Loop ─────────────────────────────────────────────────────────
+    function draw() {
+      render();
       animId = requestAnimationFrame(draw);
     }
 
-    // ── Init ──────────────────────────────────────────────────────────
-    init();
+    resize();
     draw();
 
-    // ── Pointer events ────────────────────────────────────────────────
+    // ── Pointer ──────────────────────────────────────────────────────
     window.addEventListener('mousemove', e => {
-      pointer.x = e.clientX;
-      pointer.y = e.clientY;
-      pointer.active = true;
-      revealAt(e.clientX, e.clientY);
+      pointer.x = e.clientX; pointer.y = e.clientY; pointer.active = true;
+      applyBrush(e.clientX, e.clientY);
     });
     window.addEventListener('mouseleave', () => { pointer.active = false; });
 
     window.addEventListener('touchmove', e => {
       const t = e.touches[0];
-      pointer.x = t.clientX;
-      pointer.y = t.clientY;
-      pointer.active = true;
-      revealAt(t.clientX, t.clientY);
+      pointer.x = t.clientX; pointer.y = t.clientY; pointer.active = true;
+      applyBrush(t.clientX, t.clientY);
     }, { passive: true });
-    window.addEventListener('touchend',  () => { pointer.active = false; });
+    window.addEventListener('touchend', () => { pointer.active = false; });
 
-    window.addEventListener('resize', () => {
-      resize();
-      particles.forEach(p => { p.x = rand(0, W); p.y = rand(0, H); });
-    });
+    window.addEventListener('resize', () => { resize(); });
   </script>
 </body>
 </html>
