@@ -9,7 +9,7 @@
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
     html, body {
       width: 100%; height: 100%; overflow: hidden;
-      background: #1c0600;
+      background: #1a0400;
       font-family: 'Inter', sans-serif;
     }
     .stage {
@@ -59,183 +59,216 @@
   <script>
     const canvas = document.getElementById('c');
     const ctx    = canvas.getContext('2d');
-    let W, H;
+    let W, H, cols, rows, N, imgData;
 
-    // offscreen coverage (the powder bed — erased permanently on swipe)
-    const cover = document.createElement('canvas');
-    const cctx  = cover.getContext('2d');
+    // ── Grid ─────────────────────────────────────────────────────────
+    const GRID       = 3;    // px per cell
+    const PUSH_R     = 70;   // push brush radius px
+    const PUSH_FORCE = 2.8;  // how hard cursor pushes
+    const FRICTION   = 0.87; // velocity decay
+    const FLOW       = 0.38; // height transfer per frame per speed unit
+    const NORM_SCALE = 7;    // normal gradient — 3D depth intensity
+    const GRAIN_NS   = 0.5;  // per-grain normal jitter
 
-    // physics particles — finite, scatter and leave
-    const phys   = [];
-    const MAX_P  = 500;
+    let H_cur, H_nxt, VX, VY, GR, GG, GB, GNX, GNY;
 
-    // pointer velocity
-    let pX = null, pY = null, pT = null, vX = 0, vY = 0;
-
-    // powder constants (light + floaty)
-    const GRAVITY = 0.012;   // very low — powder hangs in air
-    const DAMPING = 0.968;   // high air resistance
-    const DRIFT   = 0.018;   // random sideways drift
+    // pointer velocity (px/frame)
+    let pX = null, pY = null, pT = null;
+    let vX = 0, vY = 0;
 
     const rand = (a, b) => Math.random() * (b - a) + a;
 
-    // ── Coverage texture — built once ─────────────────────────────────
-    function buildCover() {
-      W = canvas.width  = cover.width  = window.innerWidth;
-      H = canvas.height = cover.height = window.innerHeight;
+    // ── Init height map ───────────────────────────────────────────────
+    function build() {
+      W = canvas.width  = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+      cols = Math.ceil(W / GRID);
+      rows = Math.ceil(H / GRID);
+      N    = cols * rows;
 
-      // Base warm powder color
-      cctx.fillStyle = '#7A2C00';
-      cctx.fillRect(0, 0, W, H);
+      H_cur = new Float32Array(N);
+      H_nxt = new Float32Array(N);
+      VX    = new Float32Array(N);
+      VY    = new Float32Array(N);
+      GR    = new Uint8Array(N);   // grain red
+      GG    = new Uint8Array(N);   // grain green
+      GB    = new Uint8Array(N);   // grain blue
+      GNX   = new Float32Array(N); // baked normal noise X
+      GNY   = new Float32Array(N); // baked normal noise Y
 
-      // Soft tonal variation — subtle dunes
-      for (let i = 0; i < 600; i++) {
-        const x = rand(0,W), y = rand(0,H), r = rand(20,90);
-        const g = cctx.createRadialGradient(x,y,0,x,y,r);
-        const dark = Math.random() > 0.5;
-        g.addColorStop(0, dark
-          ? `rgba(0,0,0,${rand(0.06,0.22)})`
-          : `rgba(255,140,40,${rand(0.04,0.18)})`);
-        g.addColorStop(1, 'rgba(0,0,0,0)');
-        cctx.fillStyle = g;
-        cctx.beginPath(); cctx.arc(x,y,r,0,Math.PI*2); cctx.fill();
-      }
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const i = r * cols + c;
+          // Macro dune shape via sine waves
+          const dune =
+            Math.sin(c * 0.055 + r * 0.040) * 0.13 +
+            Math.sin(c * 0.110 - r * 0.075) * 0.09 +
+            Math.sin(c * 0.028 + r * 0.100) * 0.05;
+          H_cur[i] = 1.0 + dune + rand(-0.04, 0.04);
 
-      // Grain layer — WITH drop shadow for 3D depth
-      cctx.save();
-      cctx.shadowColor   = 'rgba(0,0,0,0.9)';
-      cctx.shadowOffsetX = 0.8;
-      cctx.shadowOffsetY = 1.1;
-      cctx.shadowBlur    = 0.4;
+          // Warm powder colors — bright orange/red range
+          GR[i]  = rand(185, 255) | 0;
+          GG[i]  = rand(65,  145) | 0;
+          GB[i]  = rand(0,   18)  | 0;
 
-      // Clustered grains (uneven density)
-      for (let k = 0; k < 130; k++) {
-        const cx = rand(0,W), cy = rand(0,H), spread = rand(8,85);
-        const n  = rand(80,380) | 0;
-        for (let j = 0; j < n; j++) {
-          const a = rand(0,Math.PI*2), d = rand(0,spread)*Math.sqrt(Math.random());
-          const x = cx+Math.cos(a)*d, y = cy+Math.sin(a)*d;
-          if (x<0||x>W||y<0||y>H) continue;
-          cctx.beginPath();
-          cctx.arc(x, y, rand(0.5,2.0), 0, Math.PI*2);
-          cctx.fillStyle = `rgba(${rand(145,255)|0},${rand(40,120)|0},${rand(0,14)|0},${rand(0.5,1.0)})`;
-          cctx.fill();
+          // Baked per-grain normal noise for powder texture
+          GNX[i] = rand(-1, 1);
+          GNY[i] = rand(-1, 1);
         }
       }
-      cctx.restore();
 
-      // Specular pass — tiny bright dots offset top-left (simulates light catching grain edges)
-      for (let i = 0; i < 12000; i++) {
-        const x = rand(0,W), y = rand(0,H), r = rand(0.2,0.7);
-        cctx.beginPath();
-        cctx.arc(x-0.4, y-0.5, r, 0, Math.PI*2);
-        cctx.fillStyle = `rgba(255,${rand(170,220)|0},${rand(80,140)|0},${rand(0.06,0.28)})`;
-        cctx.fill();
-      }
+      imgData = ctx.createImageData(W, H);
+    }
 
-      // Fine micro-dust fill
-      for (let i = 0; i < 20000; i++) {
-        cctx.fillStyle = `rgba(${rand(150,240)|0},${rand(50,110)|0},0,${rand(0.1,0.45)})`;
-        cctx.fillRect(rand(0,W), rand(0,H), rand(0.3,0.9), rand(0.3,0.9));
+    // ── Push: velocity in swipe direction + radial spread ─────────────
+    function push(px, py) {
+      const speed = Math.sqrt(vX*vX + vY*vY);
+      const cx = (px / GRID) | 0;
+      const cy = (py / GRID) | 0;
+      const br = (PUSH_R / GRID) | 0;
+
+      // Normalized swipe direction
+      const slen = Math.max(speed, 0.001);
+      const sdx  = vX / slen, sdy = vY / slen;
+
+      for (let dy = -br; dy <= br; dy++) {
+        for (let dx = -br; dx <= br; dx++) {
+          const nc = cx + dx, nr = cy + dy;
+          if (nc < 1 || nc >= cols-1 || nr < 1 || nr >= rows-1) continue;
+          const d2 = dx*dx + dy*dy;
+          if (d2 >= br*br || d2 < 0.5) continue;
+          const d = Math.sqrt(d2);
+          const falloff = (1 - d/br) * (1 - d/br);
+
+          // Push direction = 70% swipe direction + 30% radial outward
+          const rdx = dx/d, rdy = dy/d;
+          const pdx = sdx*0.7 + rdx*0.3;
+          const pdy = sdy*0.7 + rdy*0.3;
+
+          const f   = falloff * PUSH_FORCE * Math.min(speed * 0.4 + 0.5, 3.0);
+          const idx = nr * cols + nc;
+          VX[idx] += pdx * f;
+          VY[idx] += pdy * f;
+        }
       }
     }
 
-    // ── Swipe: erase coverage + spawn powder particles ────────────────
-    function swipeAt(x, y) {
-      const speed  = Math.sqrt(vX*vX + vY*vY);
-      const brushR = Math.max(16, Math.min(60, 22 + speed * 3.5));
+    // ── Physics step: height flows between cells ──────────────────────
+    function step() {
+      H_nxt.set(H_cur);
 
-      // Erase from bed
-      cctx.globalCompositeOperation = 'destination-out';
-      const g = cctx.createRadialGradient(x, y, 0, x, y, brushR);
-      g.addColorStop(0,    'rgba(0,0,0,1)');
-      g.addColorStop(0.5,  'rgba(0,0,0,0.9)');
-      g.addColorStop(1,    'rgba(0,0,0,0)');
-      cctx.fillStyle = g;
-      cctx.beginPath(); cctx.arc(x, y, brushR, 0, Math.PI*2); cctx.fill();
-      cctx.globalCompositeOperation = 'source-over';
+      for (let r = 1; r < rows-1; r++) {
+        for (let c = 1; c < cols-1; c++) {
+          const i = r * cols + c;
 
-      if (speed < 0.3) return;
+          VX[i] *= FRICTION;
+          VY[i] *= FRICTION;
 
-      const len  = Math.sqrt(vX*vX + vY*vY);
-      const dirX = vX/len, dirY = vY/len;
-      const count = Math.min(MAX_P - phys.length, Math.floor(speed * 14 + 5) | 0);
-      const cone  = Math.min(Math.PI * 0.65, 0.3 + speed * 0.07);
+          const vx = VX[i], vy = VY[i];
+          const spd = Math.sqrt(vx*vx + vy*vy);
+          if (spd < 0.005) continue;
 
-      for (let i = 0; i < count; i++) {
-        const a   = rand(0, Math.PI*2);
-        const d   = rand(0, brushR * 0.8);
-        const la  = Math.atan2(dirY, dirX) + rand(-cone, cone);
-        const spd = speed * rand(0.35, 1.6);
+          const h  = H_cur[i];
+          const fx = Math.min(h * FLOW * Math.abs(vx), h * 0.28);
+          const fy = Math.min(h * FLOW * Math.abs(vy), h * 0.28);
 
-        phys.push({
-          x:  x + Math.cos(a)*d,
-          y:  y + Math.sin(a)*d,
-          vx: Math.cos(la)*spd,
-          vy: Math.sin(la)*spd - rand(0, speed*0.25), // upward billow
-          r:  rand(0.4, 1.8),
-          R:  rand(180,255)|0,
-          G:  rand(55,130)|0,
-          B:  rand(0,12)|0,
-          a:  rand(0.5, 0.95),
-        });
+          if (fx > 0.0001) {
+            const tc = vx > 0 ? c+1 : c-1;
+            H_nxt[i]         -= fx;
+            H_nxt[r*cols+tc] += fx;
+          }
+          if (fy > 0.0001) {
+            const tr = vy > 0 ? r+1 : r-1;
+            H_nxt[i]         -= fy;
+            H_nxt[tr*cols+c] += fy;
+          }
+        }
       }
+
+      const tmp = H_cur; H_cur = H_nxt; H_nxt = tmp;
     }
 
-    // ── Main loop ─────────────────────────────────────────────────────
-    function loop() {
-      ctx.clearRect(0, 0, W, H);
-      ctx.drawImage(cover, 0, 0);
+    // ── Render: height map → lit 3D powder pixels ────────────────────
+    function render() {
+      const data = imgData.data;
 
-      // Physics particles — drawn as flat fast circles (no gradient per frame)
-      ctx.save();
-      ctx.shadowColor   = 'rgba(0,0,0,0.55)';
-      ctx.shadowOffsetX = 0.5;
-      ctx.shadowOffsetY = 0.7;
-      ctx.shadowBlur    = 1.2;
+      // Light from top-left
+      const lx = -0.5, ly = -0.75, lz = 0.9;
+      const ll  = Math.sqrt(lx*lx + ly*ly + lz*lz);
+      const nlx = lx/ll, nly = ly/ll, nlz = lz/ll;
 
-      for (let i = phys.length-1; i >= 0; i--) {
-        const p = phys[i];
+      for (let r = 1; r < rows-1; r++) {
+        for (let c = 1; c < cols-1; c++) {
+          const i = r * cols + c;
+          const h = H_cur[i];
 
-        p.vy += GRAVITY;
-        p.vx *= DAMPING; p.vy *= DAMPING;
-        p.vx += (Math.random()-0.5)*DRIFT;
-        p.x  += p.vx; p.y  += p.vy;
+          // Surface normal from height gradient + per-grain noise
+          const gx = (H_cur[i+1]    - H_cur[i-1])    * NORM_SCALE + GNX[i] * GRAIN_NS;
+          const gy = (H_cur[i+cols] - H_cur[i-cols]) * NORM_SCALE + GNY[i] * GRAIN_NS;
+          const gz = 1.0;
+          const gl  = Math.sqrt(gx*gx + gy*gy + gz*gz);
+          const nx  = -gx/gl, ny = -gy/gl, nz = gz/gl;
 
-        if (p.x<-8||p.x>W+8||p.y>H+8||p.y<-220) { phys.splice(i,1); continue; }
+          // Diffuse (Lambert)
+          const ndl   = nx*nlx + ny*nly + nz*nlz;
+          const light = 0.22 + 0.78 * Math.max(0, ndl);
 
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
-        ctx.fillStyle = `rgba(${p.R},${p.G},${p.B},${p.a})`;
-        ctx.fill();
+          // Specular (Blinn-Phong — powder has soft sheen)
+          const hx = nlx, hy = nly, hz = nlz + 1;
+          const hl  = Math.sqrt(hx*hx + hy*hy + hz*hz);
+          const sp  = Math.pow(Math.max(0, nx*(hx/hl)+ny*(hy/hl)+nz*(hz/hl)), 22) * 0.7;
+
+          // Height boost: piled powder is brighter/raised
+          const hb = h > 1.05 ? 1 + (h-1)*1.0 : 1.0;
+
+          const cl  = v => v < 0 ? 0 : v > 255 ? 255 : v | 0;
+          const R   = cl(GR[i] * light * hb + sp * 255);
+          const G   = cl(GG[i] * light * hb + sp * 210);
+          const B   = cl(GB[i] * light * hb + sp * 170);
+          // Where powder is pushed thin, content shows through
+          const A   = cl(Math.min(h * 1.15, 1.0) * 255);
+
+          const px0 = c * GRID, py0 = r * GRID;
+          for (let dy = 0; dy < GRID; dy++) {
+            let pi = ((py0+dy) * W + px0) * 4;
+            for (let dx = 0; dx < GRID; dx++, pi += 4) {
+              data[pi]   = R;
+              data[pi+1] = G;
+              data[pi+2] = B;
+              data[pi+3] = A;
+            }
+          }
+        }
       }
-      ctx.restore();
 
-      requestAnimationFrame(loop);
+      ctx.putImageData(imgData, 0, 0);
     }
+
+    // ── Loop ──────────────────────────────────────────────────────────
+    function loop() { step(); render(); requestAnimationFrame(loop); }
+
+    build();
+    loop();
 
     // ── Input ─────────────────────────────────────────────────────────
     function onMove(x, y) {
       const now = performance.now();
       if (pX !== null) {
-        const dt = Math.max(1, Math.min(50, now-pT));
-        vX = (x-pX)/dt*16.67;
-        vY = (y-pY)/dt*16.67;
-        swipeAt(x, y);
+        const dt = Math.max(1, Math.min(50, now - pT));
+        vX = (x - pX) / dt * 16.67;
+        vY = (y - pY) / dt * 16.67;
+        push(x, y);
       }
-      pX=x; pY=y; pT=now;
+      pX = x; pY = y; pT = now;
     }
-    function onEnd() { pX=pY=null; vX=vY=0; }
+    function onEnd() { pX = pY = null; vX = vY = 0; }
 
-    window.addEventListener('mousemove',  e => onMove(e.clientX, e.clientY));
-    window.addEventListener('mouseup',    onEnd);
-    window.addEventListener('mouseleave', onEnd);
-    window.addEventListener('touchmove',  e => { e.preventDefault(); onMove(e.touches[0].clientX, e.touches[0].clientY); }, { passive:false });
-    window.addEventListener('touchend',   onEnd);
-    window.addEventListener('resize',     buildCover);
-
-    buildCover();
-    loop();
+    window.addEventListener('mousemove',   e => onMove(e.clientX, e.clientY));
+    window.addEventListener('mouseup',     onEnd);
+    window.addEventListener('mouseleave',  onEnd);
+    window.addEventListener('touchmove',   e => { e.preventDefault(); onMove(e.touches[0].clientX, e.touches[0].clientY); }, { passive: false });
+    window.addEventListener('touchend',    onEnd);
+    window.addEventListener('resize',      build);
   </script>
 </body>
 </html>
