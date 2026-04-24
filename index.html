@@ -7,54 +7,63 @@
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@900&display=swap');
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
     html, body {
       width: 100%; height: 100%;
-      background: #000;
       overflow: hidden;
+      background: #0d0300;
       font-family: 'Inter', sans-serif;
     }
-    canvas {
-      position: fixed; inset: 0;
-      pointer-events: none;
-      z-index: 10;
-    }
+
+    /* ── Content (revealed as powder clears) ── */
     .stage {
       position: fixed; inset: 0;
       display: flex; flex-direction: column;
       align-items: center; justify-content: center;
-      user-select: none;
+      user-select: none; pointer-events: none;
     }
     .date {
       font-size: clamp(48px, 12vw, 140px);
-      font-weight: 900; letter-spacing: -0.03em; line-height: 1; color: #fff;
+      font-weight: 900; letter-spacing: -0.03em; line-height: 1;
+      color: #fff;
     }
     .label {
       margin-top: 18px;
       font-size: clamp(11px, 1.6vw, 15px);
       font-weight: 900; letter-spacing: 0.28em;
-      text-transform: uppercase; color: #ffffff30;
+      text-transform: uppercase; color: #ffffff35;
     }
     .logo-wrap {
       position: fixed; bottom: clamp(32px,5vh,56px);
       left: 50%; transform: translateX(-50%);
+      pointer-events: none;
     }
     .logo {
       font-size: clamp(28px,5vw,48px); font-weight: 900; letter-spacing: -0.04em;
-      background: linear-gradient(90deg,#FF6B00 0%,#FF3B3B 100%);
+      background: linear-gradient(90deg,#FF6B00,#FF3B3B);
       -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
     }
     .hint {
       position: fixed; bottom: clamp(90px,12vh,120px);
       left: 50%; transform: translateX(-50%);
       font-size: 11px; font-weight: 900; letter-spacing: 0.22em;
-      text-transform: uppercase; color: #ffffff22; white-space: nowrap;
+      text-transform: uppercase; color: #ffffff20; white-space: nowrap;
+      pointer-events: none;
       animation: pulse 2.5s ease-in-out infinite;
     }
-    @keyframes pulse { 0%,100%{opacity:.25} 50%{opacity:.85} }
+    @keyframes pulse { 0%,100%{opacity:.2} 50%{opacity:.8} }
+
+    /* ── Canvas on top ── */
+    #c {
+      position: fixed; inset: 0;
+      pointer-events: none;
+      z-index: 10;
+    }
   </style>
 </head>
 <body>
-  <canvas id="dust"></canvas>
+
+  <!-- Content beneath the powder -->
   <div class="stage">
     <div class="date">05.05.2026</div>
     <div class="label">Launch Date</div>
@@ -62,211 +71,198 @@
   <div class="logo-wrap"><div class="logo">vehob</div></div>
   <div class="hint">swipe to reveal</div>
 
+  <canvas id="c"></canvas>
+
   <script>
-    const canvas = document.getElementById('dust');
+    const canvas = document.getElementById('c');
     const ctx    = canvas.getContext('2d');
-    let W, H, cols, rows, N, imgData;
+    let W, H;
 
-    // ── tunables ──────────────────────────────────────────────────────
-    const GRID         = 2;    // 2 px per grain — fine sand texture
-    const REPEL_R      = 85;   // repulsion radius px
-    const REPEL_FORCE  = 5.0;  // push strength
-    const FRICTION     = 0.84; // velocity decay
-    const FLOW         = 0.45; // height transfer fraction per frame
-    const NORM_SCALE   = 11;   // normal gradient strength → 3D depth
-    const GRAIN_NOISE  = 0.55; // per-grain normal jitter (grain texture)
+    // ── Offscreen coverage canvas (the powder bed) ────────────────────
+    const cover = document.createElement('canvas');
+    const cctx  = cover.getContext('2d');
 
-    // typed arrays — all grain data
-    let H_cur, H_nxt;          // height field (Float32)
-    let VX, VY;                // velocity (Float32)
-    let GR, GG, GB;            // baked color (Uint8)
-    let NX, NY;                // baked normal noise (Float32, range ±1)
+    // ── Physics particles (launched, fly away, finite) ─────────────────
+    const phys = [];
+    const MAX_PHYS = 4000; // cap so it stays fast
 
-    const ptr = { x: -9999, y: -9999, on: false };
+    // ── Pointer state ─────────────────────────────────────────────────
+    let pX = null, pY = null, pT = null;
+    let vX = 0, vY = 0; // pointer velocity px/frame
+
+    // ── Physics constants ─────────────────────────────────────────────
+    const GRAVITY  = 0.018;
+    const DAMPING  = 0.97;
+    const DRIFT    = 0.013;
+
     const rand = (a, b) => Math.random() * (b - a) + a;
 
-    // ── init ──────────────────────────────────────────────────────────
-    function build() {
-      W = canvas.width  = window.innerWidth;
-      H = canvas.height = window.innerHeight;
-      cols = Math.ceil(W / GRID);
-      rows = Math.ceil(H / GRID);
-      N    = cols * rows;
+    // ── Build the powder coverage texture ────────────────────────────
+    function buildCover() {
+      W = canvas.width  = cover.width  = window.innerWidth;
+      H = canvas.height = cover.height = window.innerHeight;
 
-      H_cur = new Float32Array(N);
-      H_nxt = new Float32Array(N);
-      VX    = new Float32Array(N);
-      VY    = new Float32Array(N);
-      GR    = new Uint8Array(N);
-      GG    = new Uint8Array(N);
-      GB    = new Uint8Array(N);
-      NX    = new Float32Array(N);
-      NY    = new Float32Array(N);
+      // Warm spice base
+      cctx.fillStyle = '#6B2400';
+      cctx.fillRect(0, 0, W, H);
 
-      for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-          const i = r * cols + c;
-          // dune macro-shape
-          const d =
-            Math.sin(c * 0.055 + r * 0.038) * 0.14 +
-            Math.sin(c * 0.112 - r * 0.071) * 0.09 +
-            Math.sin(c * 0.029 + r * 0.095) * 0.06;
-          H_cur[i] = 0.92 + d + rand(-0.04, 0.04);
+      // Soft large blobs — uneven density base
+      for (let i = 0; i < 1800; i++) {
+        const x = rand(0, W), y = rand(0, H), r = rand(10, 55);
+        const g = cctx.createRadialGradient(x, y, 0, x, y, r);
+        const R = rand(100, 200) | 0, G = rand(25, 80) | 0;
+        g.addColorStop(0, `rgba(${R},${G},4,${rand(0.15,0.45)})`);
+        g.addColorStop(1, `rgba(${R},${G},4,0)`);
+        cctx.fillStyle = g;
+        cctx.beginPath(); cctx.arc(x, y, r, 0, Math.PI*2); cctx.fill();
+      }
 
-          // grain color — warm orange/rust range with variation
-          GR[i] = rand(145, 252) | 0;
-          GG[i] = rand(35,  108) | 0;
-          GB[i] = rand(0,   18)  | 0;
-
-          // per-grain normal perturbation (baked once, gives grain texture)
-          NX[i] = rand(-1, 1);
-          NY[i] = rand(-1, 1);
+      // Clustered fine grain dots — uneven like real spice
+      const numClusters = 140;
+      for (let k = 0; k < numClusters; k++) {
+        const cx = rand(0, W), cy = rand(0, H);
+        const spread = rand(12, 90);
+        const count  = rand(120, 500) | 0;
+        for (let j = 0; j < count; j++) {
+          const angle = rand(0, Math.PI * 2);
+          const d     = rand(0, spread) * Math.sqrt(Math.random());
+          const x = cx + Math.cos(angle) * d;
+          const y = cy + Math.sin(angle) * d;
+          if (x < 0 || x > W || y < 0 || y > H) continue;
+          const r = rand(0.4, 2.3);
+          cctx.beginPath();
+          cctx.arc(x, y, r, 0, Math.PI * 2);
+          cctx.fillStyle = `rgba(${rand(140,255)|0},${rand(35,120)|0},${rand(0,18)|0},${rand(0.45,1.0)})`;
+          cctx.fill();
         }
       }
 
-      imgData = ctx.createImageData(W, H);
-    }
-
-    // ── repulsion ─────────────────────────────────────────────────────
-    function repel(px, py) {
-      const cx = (px / GRID) | 0;
-      const cy = (py / GRID) | 0;
-      const br = (REPEL_R / GRID) | 0;
-
-      for (let dy = -br; dy <= br; dy++) {
-        for (let dx = -br; dx <= br; dx++) {
-          const nc = cx + dx, nr = cy + dy;
-          if (nc < 1 || nc >= cols-1 || nr < 1 || nr >= rows-1) continue;
-          const d2 = dx*dx + dy*dy;
-          if (d2 >= br*br || d2 < 1) continue;
-          const d   = Math.sqrt(d2);
-          const f   = (1 - d/br) * (1 - d/br) * REPEL_FORCE;
-          const idx = nr * cols + nc;
-          VX[idx] += (dx/d) * f;
-          VY[idx] += (dy/d) * f;
-        }
+      // Final micro-dust layer on top
+      for (let i = 0; i < 30000; i++) {
+        cctx.fillStyle = `rgba(${rand(160,245)|0},${rand(50,110)|0},${rand(0,12)|0},${rand(0.15,0.55)})`;
+        cctx.fillRect(rand(0, W), rand(0, H), rand(0.3, 1.1), rand(0.3, 1.1));
       }
     }
 
-    // ── physics step ──────────────────────────────────────────────────
-    function step() {
-      H_nxt.set(H_cur);
+    // ── Erase powder + spawn physics particles ────────────────────────
+    function swipeAt(x, y) {
+      const speed  = Math.sqrt(vX*vX + vY*vY);
+      const brushR = Math.max(18, Math.min(72, 28 + speed * 4));
 
-      for (let r = 1; r < rows-1; r++) {
-        for (let c = 1; c < cols-1; c++) {
-          const i = r * cols + c;
+      // Erase from coverage canvas
+      cctx.globalCompositeOperation = 'destination-out';
+      const g = cctx.createRadialGradient(x, y, 0, x, y, brushR);
+      g.addColorStop(0,   'rgba(0,0,0,1)');
+      g.addColorStop(0.55,'rgba(0,0,0,0.85)');
+      g.addColorStop(1,   'rgba(0,0,0,0)');
+      cctx.fillStyle = g;
+      cctx.beginPath(); cctx.arc(x, y, brushR, 0, Math.PI*2); cctx.fill();
+      cctx.globalCompositeOperation = 'source-over';
 
-          VX[i] *= FRICTION;
-          VY[i] *= FRICTION;
+      if (speed < 0.4) return;
 
-          const vx = VX[i], vy = VY[i];
-          const spd = Math.sqrt(vx*vx + vy*vy);
-          if (spd < 0.008) continue;
+      // Swipe direction (normalized)
+      const len  = Math.sqrt(vX*vX + vY*vY);
+      const dirX = vX / len;
+      const dirY = vY / len;
 
-          // Distribute height in both x and y proportionally
-          const h = H_cur[i];
-          const fx = Math.min(h * FLOW * Math.abs(vx), h * 0.3);
-          const fy = Math.min(h * FLOW * Math.abs(vy), h * 0.3);
+      // Number of particles scales with speed
+      const count = Math.min(MAX_PHYS - phys.length, Math.floor(speed * 20 + 8));
 
-          if (fx > 0.0001) {
-            const tc = vx > 0 ? c+1 : c-1;
-            H_nxt[i]          -= fx;
-            H_nxt[r*cols+tc]  += fx;
-          }
-          if (fy > 0.0001) {
-            const tr = vy > 0 ? r+1 : r-1;
-            H_nxt[i]          -= fy;
-            H_nxt[tr*cols+c]  += fy;
-          }
-        }
+      for (let i = 0; i < count; i++) {
+        // Spawn inside brush radius
+        const angle = rand(0, Math.PI * 2);
+        const d     = rand(0, brushR * 0.85);
+
+        // Fast = wide spray cone. Slow = narrow wisp.
+        const coneAngle  = Math.min(Math.PI * 0.6, speed * 0.08);
+        const launchAngle = Math.atan2(dirY, dirX) + rand(-coneAngle, coneAngle);
+        const launchSpd  = speed * rand(0.45, 1.7);
+
+        phys.push({
+          x:  x + Math.cos(angle) * d,
+          y:  y + Math.sin(angle) * d,
+          vx: Math.cos(launchAngle) * launchSpd,
+          vy: Math.sin(launchAngle) * launchSpd,
+          r:  rand(0.5, 2.4),
+          R:  rand(145, 255) | 0,
+          G:  rand(38,  118) | 0,
+          B:  rand(0,   18)  | 0,
+          a:  rand(0.55, 1.0),
+        });
       }
-
-      // Swap buffers
-      const tmp = H_cur; H_cur = H_nxt; H_nxt = tmp;
     }
 
-    // ── render ────────────────────────────────────────────────────────
-    function render() {
-      const data = imgData.data;
-
-      // Light: top-left
-      const lx = -0.5, ly = -0.78, lz = 0.9;
-      const ll  = Math.sqrt(lx*lx + ly*ly + lz*lz);
-      const nlx = lx/ll, nly = ly/ll, nlz = lz/ll;
-
-      for (let r = 1; r < rows-1; r++) {
-        for (let c = 1; c < cols-1; c++) {
-          const i  = r * cols + c;
-          const h  = H_cur[i];
-
-          // Surface normal: smooth gradient + per-grain noise
-          const sgx = (H_cur[i+1]    - H_cur[i-1])    * NORM_SCALE;
-          const sgy = (H_cur[i+cols] - H_cur[i-cols]) * NORM_SCALE;
-          const gx  = sgx + NX[i] * GRAIN_NOISE;
-          const gy  = sgy + NY[i] * GRAIN_NOISE;
-          const gz  = 1.0;
-          const gl  = Math.sqrt(gx*gx + gy*gy + gz*gz);
-          const nx  = -gx/gl, ny = -gy/gl, nz = gz/gl;
-
-          // Diffuse
-          const ndl   = nx*nlx + ny*nly + nz*nlz;
-          const diff  = Math.max(0, ndl);
-          const light = 0.18 + 0.82 * diff;
-
-          // Specular (tight — sand grains glint)
-          const hx = nlx, hy = nly, hz = nlz + 1;
-          const hl  = Math.sqrt(hx*hx + hy*hy + hz*hz);
-          const sp  = Math.pow(Math.max(0, nx*(hx/hl)+ny*(hy/hl)+nz*(hz/hl)), 38) * 1.0;
-
-          // Piled sand is raised and catches more highlight
-          const hb = h > 1.0 ? 1 + (h-1)*1.1 : h < 0.6 ? h*0.8 : 1.0;
-
-          const cl  = (v) => v < 0 ? 0 : v > 255 ? 255 : v | 0;
-          const R   = cl(GR[i] * light * hb + sp * 255);
-          const G   = cl(GG[i] * light * hb + sp * 215);
-          const B   = cl(GB[i] * light * hb + sp * 175);
-          // Thin sand becomes slightly transparent — content peeks through
-          const A   = cl(Math.min(h * 1.1, 1.0) * 255);
-
-          const px0 = c * GRID, py0 = r * GRID;
-          for (let dy = 0; dy < GRID; dy++) {
-            let pi = ((py0+dy)*W + px0) * 4;
-            for (let dx = 0; dx < GRID; dx++, pi += 4) {
-              data[pi]   = R;
-              data[pi+1] = G;
-              data[pi+2] = B;
-              data[pi+3] = A;
-            }
-          }
-        }
-      }
-
-      ctx.putImageData(imgData, 0, 0);
-    }
-
-    // ── loop ──────────────────────────────────────────────────────────
+    // ── Main loop ─────────────────────────────────────────────────────
     function loop() {
-      step();
-      render();
+      ctx.clearRect(0, 0, W, H);
+
+      // Draw powder bed
+      ctx.drawImage(cover, 0, 0);
+
+      // Update + draw physics particles
+      for (let i = phys.length - 1; i >= 0; i--) {
+        const p = phys[i];
+
+        // Physics
+        p.vy += GRAVITY;
+        p.vx *= DAMPING;
+        p.vy *= DAMPING;
+        p.vx += (Math.random() - 0.5) * DRIFT;
+
+        p.x += p.vx;
+        p.y += p.vy;
+
+        // Remove when off screen
+        if (p.x < -6 || p.x > W+6 || p.y > H+6 || p.y < -180) {
+          phys.splice(i, 1);
+          continue;
+        }
+
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${p.R},${p.G},${p.B},${p.a})`;
+        ctx.fill();
+      }
+
       requestAnimationFrame(loop);
     }
 
-    build();
-    loop();
+    // ── Pointer tracking ──────────────────────────────────────────────
+    function onMove(x, y) {
+      const now = performance.now();
+      if (pX !== null) {
+        const dt = Math.max(1, Math.min(60, now - pT));
+        vX = (x - pX) / dt * 16.67; // scale to px/frame @60fps
+        vY = (y - pY) / dt * 16.67;
+        swipeAt(x, y);
+      }
+      pX = x; pY = y; pT = now;
+    }
 
-    // ── input ─────────────────────────────────────────────────────────
-    window.addEventListener('mousemove', e => {
-      ptr.x = e.clientX; ptr.y = e.clientY; ptr.on = true;
-      repel(e.clientX, e.clientY);
-    });
-    window.addEventListener('mouseleave', () => { ptr.on = false; });
+    function onEnd() {
+      pX = pY = null;
+      vX = vY = 0;
+    }
 
+    // Mouse
+    window.addEventListener('mousemove', e => onMove(e.clientX, e.clientY));
+    window.addEventListener('mouseup',   onEnd);
+    window.addEventListener('mouseleave', onEnd);
+
+    // Touch
     window.addEventListener('touchmove', e => {
-      const t = e.touches[0];
-      repel(t.clientX, t.clientY);
-    }, { passive: true });
+      e.preventDefault();
+      onMove(e.touches[0].clientX, e.touches[0].clientY);
+    }, { passive: false });
+    window.addEventListener('touchend',   onEnd);
+    window.addEventListener('touchcancel', onEnd);
 
-    window.addEventListener('resize', build);
+    window.addEventListener('resize', buildCover);
+
+    // ── Boot ──────────────────────────────────────────────────────────
+    buildCover();
+    loop();
   </script>
 </body>
 </html>
