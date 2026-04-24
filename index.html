@@ -103,144 +103,157 @@
     const ctx    = canvas.getContext('2d');
     let W, H, animId;
 
-    // ── Grid ─────────────────────────────────────────────────────────
-    const GRID     = 3;    // px per cell — finer = more detail
-    const BRUSH_R  = 42;   // reveal brush radius (px)
-    const STRENGTH = 0.22; // how much sand removed per frame
-    const PILE     = 0.14; // sand piles at brush edge
+    // ── Grid config ───────────────────────────────────────────────────
+    const GRID        = 4;    // px per cell
+    const REPEL_R     = 75;   // repulsion radius in px
+    const REPEL_FORCE = 1.4;  // push strength
+    const FRICTION    = 0.86; // velocity decay per frame
+    const FLOW_RATE   = 0.15; // fraction of height that flows per unit speed
 
-    let cols, rows;
-    let heights;   // Float32Array — 0 (cleared) to 1+ (piled)
-    let grainR, grainG, grainB; // pre-baked per-cell color jitter
+    let cols, rows, n;
+    let heights;              // Float32Array — sand height per cell
+    let velX, velY;           // Float32Array — velocity per cell
+    let grainR, grainG, grainB; // Uint8Array — baked grain colors
     let imageData;
 
     const pointer = { x: -9999, y: -9999, active: false };
 
     function rand(a, b) { return Math.random() * (b - a) + a; }
 
-    // ── Init grid ────────────────────────────────────────────────────
+    // ── Build grid ────────────────────────────────────────────────────
     function resize() {
       W = canvas.width  = window.innerWidth;
       H = canvas.height = window.innerHeight;
       cols = Math.ceil(W / GRID);
       rows = Math.ceil(H / GRID);
+      n    = cols * rows;
 
-      heights = new Float32Array(cols * rows);
-      grainR  = new Uint8Array(cols * rows);
-      grainG  = new Uint8Array(cols * rows);
-      grainB  = new Uint8Array(cols * rows);
+      heights = new Float32Array(n);
+      velX    = new Float32Array(n);
+      velY    = new Float32Array(n);
+      grainR  = new Uint8Array(n);
+      grainG  = new Uint8Array(n);
+      grainB  = new Uint8Array(n);
 
-      // Build low-frequency dune bumps using summed sine waves
-      for (let row = 0; row < rows; row++) {
-        for (let col = 0; col < cols; col++) {
-          const i = row * cols + col;
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const i = r * cols + c;
+          // Low-frequency dune bumps + micro noise
           const dune =
-            Math.sin(col * 0.07 + row * 0.05) * 0.12 +
-            Math.sin(col * 0.13 - row * 0.09) * 0.08 +
-            Math.sin(col * 0.03 + row * 0.11) * 0.06;
-          heights[i] = 0.92 + dune + rand(-0.06, 0.06);
-          grainR[i] = rand(155, 255) | 0;
-          grainG[i] = rand(40,  110) | 0;
-          grainB[i] = rand(0,   22)  | 0;
+            Math.sin(c * 0.06 + r * 0.04) * 0.13 +
+            Math.sin(c * 0.11 - r * 0.08) * 0.09 +
+            Math.sin(c * 0.03 + r * 0.13) * 0.05;
+          heights[i] = 0.90 + dune + rand(-0.05, 0.05);
+          grainR[i]  = rand(150, 255) | 0;
+          grainG[i]  = rand(38,  112) | 0;
+          grainB[i]  = rand(0,   20)  | 0;
         }
       }
 
       imageData = ctx.createImageData(W, H);
     }
 
-    // ── Brush: remove sand + pile at edge ────────────────────────────
-    function applyBrush(px, py) {
-      const cx  = px / GRID;
-      const cy  = py / GRID;
-      const br  = BRUSH_R / GRID;
-      const br2 = br * 1.65;
-      const ceil = Math.ceil(br2);
+    // ── Repulsion: push velocity outward from cursor ──────────────────
+    function applyRepulsion(px, py) {
+      const cx = (px / GRID) | 0;
+      const cy = (py / GRID) | 0;
+      const br = (REPEL_R / GRID) | 0;
 
-      for (let dy = -ceil; dy <= ceil; dy++) {
-        for (let dx = -ceil; dx <= ceil; dx++) {
-          const nx = (cx + dx) | 0;
-          const ny = (cy + dy) | 0;
+      for (let dy = -br; dy <= br; dy++) {
+        for (let dx = -br; dx <= br; dx++) {
+          const nx = cx + dx, ny = cy + dy;
           if (nx < 1 || nx >= cols - 1 || ny < 1 || ny >= rows - 1) continue;
           const dist = Math.sqrt(dx * dx + dy * dy);
-          const idx  = ny * cols + nx;
-
-          if (dist < br) {
-            // Cosine falloff — smooth center removal
-            const f = Math.cos((dist / br) * Math.PI * 0.5);
-            heights[idx] = Math.max(0, heights[idx] - f * STRENGTH);
-          } else if (dist < br2) {
-            // Pile at edge — sand displaced outward
-            const t    = (dist - br) / (br2 - br);
-            const edge = (1 - t) * (1 - t);
-            heights[idx] = Math.min(1.6, heights[idx] + edge * PILE);
+          if (dist < br && dist > 0.5) {
+            const f   = (1 - dist / br) * (1 - dist / br) * REPEL_FORCE;
+            const idx = ny * cols + nx;
+            velX[idx] += (dx / dist) * f;
+            velY[idx] += (dy / dist) * f;
           }
         }
       }
     }
 
-    // ── Render height map with 3-D lighting ──────────────────────────
+    // ── Physics step: flow height between cells ───────────────────────
+    function step() {
+      const newH = new Float32Array(heights);
+
+      for (let r = 1; r < rows - 1; r++) {
+        for (let c = 1; c < cols - 1; c++) {
+          const i = r * cols + c;
+
+          velX[i] *= FRICTION;
+          velY[i] *= FRICTION;
+
+          const speed = Math.sqrt(velX[i] * velX[i] + velY[i] * velY[i]);
+          if (speed < 0.005) continue;
+
+          // How much height to move this frame
+          const flow = Math.min(heights[i] * FLOW_RATE * speed, heights[i] * 0.18);
+
+          // Target cell in velocity direction
+          const tc = c + (velX[i] > 0 ? 1 : -1);
+          const tr = r + (velY[i] > 0 ? 1 : -1);
+          if (tc >= 0 && tc < cols && tr >= 0 && tr < rows) {
+            const ti = tr * cols + tc;
+            newH[i]  -= flow;
+            newH[ti] += flow;
+          }
+        }
+      }
+
+      heights.set(newH);
+    }
+
+    // ── Render: height map → 3D lit pixels ───────────────────────────
     function render() {
       const data = imageData.data;
 
-      // Light direction (top-left, angled)
-      const LX = -0.45, LY = -0.75, LZ = 0.85;
-      const LL = Math.sqrt(LX*LX + LY*LY + LZ*LZ);
+      // Primary light: top-left
+      const LX = -0.5, LY = -0.8, LZ = 0.9;
+      const LL  = Math.sqrt(LX*LX + LY*LY + LZ*LZ);
       const nlx = LX/LL, nly = LY/LL, nlz = LZ/LL;
 
-      for (let row = 1; row < rows - 1; row++) {
-        for (let col = 1; col < cols - 1; col++) {
-          const idx = row * cols + col;
-          const h   = heights[idx];
+      for (let r = 1; r < rows - 1; r++) {
+        for (let c = 1; c < cols - 1; c++) {
+          const i = r * cols + c;
+          const h = heights[i];
 
-          if (h <= 0.01) {
-            // Transparent — content shows through
-            const px0 = col * GRID, py0 = row * GRID;
-            for (let dy = 0; dy < GRID; dy++) {
-              let pi = ((py0 + dy) * W + px0) * 4;
-              for (let dx = 0; dx < GRID; dx++, pi += 4)
-                data[pi+3] = 0;
-            }
-            continue;
-          }
-
-          // Surface normal — stronger gradient scale = more dramatic 3D
-          const gx = (heights[idx + 1]    - heights[idx - 1])    * 7.0;
-          const gy = (heights[idx + cols] - heights[idx - cols]) * 7.0;
+          // Surface normal from gradient (strong scale = dramatic 3D)
+          const gx = (heights[i + 1]    - heights[i - 1])    * 8.0;
+          const gy = (heights[i + cols] - heights[i - cols]) * 8.0;
           const gz = 1.0;
-          const glen = Math.sqrt(gx*gx + gy*gy + gz*gz);
-          const nx = -gx/glen, ny = -gy/glen, nz = gz/glen;
+          const gl  = Math.sqrt(gx*gx + gy*gy + gz*gz);
+          const nx  = -gx/gl, ny = -gy/gl, nz = gz/gl;
 
-          // Diffuse (Lambertian)
+          // Lambertian diffuse
           const ndotl  = nx*nlx + ny*nly + nz*nlz;
           const diffuse = Math.max(0, ndotl);
-          const light   = 0.18 + 0.82 * diffuse;
+          const light   = 0.20 + 0.80 * diffuse;
 
-          // Specular (Blinn-Phong)
+          // Blinn-Phong specular
           const hx = nlx, hy = nly, hz = nlz + 1;
-          const hlen = Math.sqrt(hx*hx + hy*hy + hz*hz);
-          const spec = Math.pow(Math.max(0, nx*(hx/hlen) + ny*(hy/hlen) + nz*(hz/hlen)), 32) * 0.9;
+          const hl  = Math.sqrt(hx*hx + hy*hy + hz*hz);
+          const spec = Math.pow(Math.max(0, nx*(hx/hl) + ny*(hy/hl) + nz*(hz/hl)), 28) * 0.85;
 
-          // Soft shadow — darken cells that slope away from light
-          const shadow = Math.max(0, Math.min(1, 0.6 + ndotl * 0.9));
-
-          // Pile areas catch more light (raised = brighter highlight)
-          const heightBoost = h > 1.0 ? 1 + (h - 1.0) * 0.8 : 1.0;
+          // Height boost: piled sand catches more light
+          const hb = h > 1.0 ? 1 + (h - 1.0) * 0.9 : 1.0;
 
           const clamp = v => v < 0 ? 0 : v > 255 ? 255 : v | 0;
-          const r = clamp(grainR[idx] * light * heightBoost * shadow + spec * 255);
-          const g = clamp(grainG[idx] * light * heightBoost * shadow + spec * 210);
-          const b = clamp(grainB[idx] * light * heightBoost * shadow + spec * 170);
-          const a = Math.min(255, (Math.min(h, 1) * 255) | 0);
+          const R = clamp(grainR[i] * light * hb + spec * 255);
+          const G = clamp(grainG[i] * light * hb + spec * 210);
+          const B = clamp(grainB[i] * light * hb + spec * 170);
+          // Alpha: low areas become transparent so content shows through
+          const A = Math.min(255, (Math.min(h, 1) * 255) | 0);
 
-          // Write GRID×GRID pixel block
-          const px0 = col * GRID, py0 = row * GRID;
+          const px0 = c * GRID, py0 = r * GRID;
           for (let dy = 0; dy < GRID; dy++) {
             let pi = ((py0 + dy) * W + px0) * 4;
             for (let dx = 0; dx < GRID; dx++, pi += 4) {
-              data[pi]   = r;
-              data[pi+1] = g;
-              data[pi+2] = b;
-              data[pi+3] = a;
+              data[pi]   = R;
+              data[pi+1] = G;
+              data[pi+2] = B;
+              data[pi+3] = A;
             }
           }
         }
@@ -249,8 +262,9 @@
       ctx.putImageData(imageData, 0, 0);
     }
 
-    // ── Loop ─────────────────────────────────────────────────────────
+    // ── Loop ──────────────────────────────────────────────────────────
     function draw() {
+      step();
       render();
       animId = requestAnimationFrame(draw);
     }
@@ -258,21 +272,21 @@
     resize();
     draw();
 
-    // ── Pointer ──────────────────────────────────────────────────────
+    // ── Input ─────────────────────────────────────────────────────────
     window.addEventListener('mousemove', e => {
       pointer.x = e.clientX; pointer.y = e.clientY; pointer.active = true;
-      applyBrush(e.clientX, e.clientY);
+      applyRepulsion(e.clientX, e.clientY);
     });
     window.addEventListener('mouseleave', () => { pointer.active = false; });
 
     window.addEventListener('touchmove', e => {
       const t = e.touches[0];
       pointer.x = t.clientX; pointer.y = t.clientY; pointer.active = true;
-      applyBrush(t.clientX, t.clientY);
+      applyRepulsion(t.clientX, t.clientY);
     }, { passive: true });
     window.addEventListener('touchend', () => { pointer.active = false; });
 
-    window.addEventListener('resize', () => { resize(); });
+    window.addEventListener('resize', resize);
   </script>
 </body>
 </html>
