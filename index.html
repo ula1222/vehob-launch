@@ -130,24 +130,41 @@
     function resize() {
       W = canvas.width = mask.width = window.innerWidth;
       H = canvas.height = mask.height = window.innerHeight;
-      // Fill mask solid black — everything covered
-      mctx.globalCompositeOperation = 'source-over';
-      mctx.fillStyle = '#000';
-      mctx.fillRect(0, 0, W, H);
+      buildMask();
     }
 
     function rand(min, max) { return Math.random() * (max - min) + min; }
 
-    // ── Particles ─────────────────────────────────────────────────────
+    // ── Build mask: solid orange fill + grain texture ─────────────────
+    function buildMask() {
+      mctx.globalCompositeOperation = 'source-over';
+      // Base solid fill — guarantees 100% coverage
+      mctx.fillStyle = '#C83800';
+      mctx.fillRect(0, 0, W, H);
+      // Grain texture on top for real dust look
+      for (let i = 0; i < 20000; i++) {
+        const x = rand(0, W);
+        const y = rand(0, H);
+        const r = rand(0.3, 1.4);
+        const c = COLORS[Math.floor(Math.random() * COLORS.length)];
+        const a = rand(0.3, 0.85);
+        mctx.beginPath();
+        mctx.arc(x, y, r, 0, Math.PI * 2);
+        mctx.fillStyle = c + Math.floor(a * 255).toString(16).padStart(2, '0');
+        mctx.fill();
+      }
+    }
+
+    // ── Particles (physics only — scatter on touch) ───────────────────
     function makeParticle() {
       return {
         x:   rand(0, W),
         y:   rand(0, H),
-        r:   rand(0.2, 1.1),  // tiny — real dust grain size
+        r:   rand(0.4, 1.6),
         evx: 0,
         evy: 0,
-        baseAlpha: rand(0.4, 1.0),
-        color:     COLORS[Math.floor(Math.random() * COLORS.length)],
+        color: COLORS[Math.floor(Math.random() * COLORS.length)],
+        alpha: rand(0.5, 1.0),
       };
     }
 
@@ -200,15 +217,15 @@
         if (p.y > H)  p.y = H;
       });
 
-      // 1. Draw the black mask (covered areas stay dark, holes are transparent)
+      // 1. Draw the mask — solid orange dust cover with grain texture, holes = revealed
       ctx.drawImage(mask, 0, 0);
 
-      // 2. Draw particles ONLY on top of covered (opaque) mask areas
+      // 2. Scattered physics particles drawn on top (visible in covered areas only)
       ctx.globalCompositeOperation = 'source-atop';
       particles.forEach(p => {
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-        ctx.fillStyle = p.color + Math.floor(p.baseAlpha * 255).toString(16).padStart(2, '0');
+        ctx.fillStyle = p.color + Math.floor(p.alpha * 255).toString(16).padStart(2, '0');
         ctx.fill();
       });
       ctx.globalCompositeOperation = 'source-over';
