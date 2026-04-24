@@ -119,14 +119,13 @@
 
     function makeParticle(fromBottom) {
       return {
-        x:    rand(0, W),
-        y:    fromBottom ? H + rand(0, 20) : rand(0, H),
-        r:    rand(0.8, 3.5),
-        vx:   rand(-0.5, 0.5),
-        vy:   rand(-0.8, -0.1),
-        alpha: rand(0.3, 1.0),
-        color: COLORS[Math.floor(Math.random() * COLORS.length)],
-        decay: rand(0.001, 0.0025),
+        x:       rand(0, W),
+        y:       fromBottom ? H + rand(0, 20) : rand(0, H),
+        r:       rand(0.8, 3.5),
+        vx:      rand(-0.5, 0.5),
+        vy:      rand(-0.8, -0.1),
+        baseAlpha: rand(0.4, 1.0),
+        color:   COLORS[Math.floor(Math.random() * COLORS.length)],
         twinkle: rand(0, Math.PI * 2),
         twinkleSpeed: rand(0.008, 0.025),
       };
@@ -142,16 +141,17 @@
       if (dismissed) return;
 
       particles.forEach((p, i) => {
-        p.twinkle    += p.twinkleSpeed;
-        p.alpha      -= p.decay;
-        p.x          += p.vx;
-        p.y          += p.vy;
+        p.twinkle += p.twinkleSpeed;
+        p.x       += p.vx;
+        p.y       += p.vy;
 
-        if (p.alpha <= 0 || p.y < -10) {
+        // Respawn from bottom when off top — no fading
+        if (p.y < -10) {
           particles[i] = makeParticle(true);
+          return;
         }
 
-        const a = p.alpha * (0.7 + 0.3 * Math.sin(p.twinkle));
+        const a = p.baseAlpha * (0.6 + 0.4 * Math.sin(p.twinkle));
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
         ctx.fillStyle = p.color + Math.floor(a * 255).toString(16).padStart(2, '0');
