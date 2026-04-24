@@ -107,8 +107,8 @@
     let W, H, particles, animId;
     let dismissed = false;
 
-    const COUNT  = 800;
-    const COLORS = ['#FF6B00','#FF8C00','#FF5500','#FF9A3C','#FFA040','#FF4500','#FFB347'];
+    const COUNT  = 2000;
+    const COLORS = ['#FF5500','#FF6B00','#E84800','#FF4000','#CC3700','#FF7020','#D94400'];
 
     function resize() {
       W = canvas.width  = window.innerWidth;
@@ -120,14 +120,14 @@
     function makeParticle(fromBottom) {
       return {
         x:          rand(0, W),
-        y:          fromBottom ? H + rand(0, 10) : rand(0, H),
-        r:          rand(0.3, 1.4),
-        vx:         rand(-0.2, 0.2),
-        vy:         rand(-0.35, -0.05),
-        baseAlpha:  rand(0.3, 0.85),
+        y:          fromBottom ? H + rand(0, 8) : rand(0, H),
+        r:          rand(0.2, 0.9),
+        vx:         rand(-0.08, 0.08),
+        vy:         rand(-0.18, -0.03),
+        baseAlpha:  rand(0.25, 0.75),
         color:      COLORS[Math.floor(Math.random() * COLORS.length)],
         twinkle:    rand(0, Math.PI * 2),
-        twinkleSpeed: rand(0.005, 0.02),
+        twinkleSpeed: rand(0.003, 0.012),
       };
     }
 
@@ -145,12 +145,12 @@
         p.x       += p.vx;
         p.y       += p.vy;
 
-        if (p.y < -4) {
+        if (p.y < -2) {
           particles[i] = makeParticle(true);
           return;
         }
 
-        const a = p.baseAlpha * (0.6 + 0.4 * Math.sin(p.twinkle));
+        const a = p.baseAlpha * (0.7 + 0.3 * Math.sin(p.twinkle));
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
         ctx.fillStyle = p.color + Math.floor(a * 255).toString(16).padStart(2, '0');
