@@ -6,249 +6,231 @@
   <title>vehob — coming soon</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@900&display=swap');
-
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-
     html, body {
       width: 100%; height: 100%;
       background: #000;
       overflow: hidden;
       font-family: 'Inter', sans-serif;
     }
-
     canvas {
-      position: fixed;
-      inset: 0;
+      position: fixed; inset: 0;
       pointer-events: none;
       z-index: 10;
     }
-
     .stage {
-      position: fixed;
-      inset: 0;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
+      position: fixed; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
       user-select: none;
     }
-
     .date {
       font-size: clamp(48px, 12vw, 140px);
-      font-weight: 900;
-      letter-spacing: -0.03em;
-      line-height: 1;
-      color: #fff;
+      font-weight: 900; letter-spacing: -0.03em; line-height: 1; color: #fff;
     }
-
     .label {
       margin-top: 18px;
       font-size: clamp(11px, 1.6vw, 15px);
-      font-weight: 900;
-      letter-spacing: 0.28em;
-      text-transform: uppercase;
-      color: #ffffff30;
+      font-weight: 900; letter-spacing: 0.28em;
+      text-transform: uppercase; color: #ffffff30;
     }
-
     .logo-wrap {
-      position: fixed;
-      bottom: clamp(32px, 5vh, 56px);
-      left: 50%;
-      transform: translateX(-50%);
+      position: fixed; bottom: clamp(32px,5vh,56px);
+      left: 50%; transform: translateX(-50%);
     }
-
     .logo {
-      font-size: clamp(28px, 5vw, 48px);
-      font-weight: 900;
-      letter-spacing: -0.04em;
-      background: linear-gradient(90deg, #FF6B00 0%, #FF3B3B 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
+      font-size: clamp(28px,5vw,48px); font-weight: 900; letter-spacing: -0.04em;
+      background: linear-gradient(90deg,#FF6B00 0%,#FF3B3B 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
     }
-
     .hint {
-      position: fixed;
-      bottom: clamp(90px, 12vh, 120px);
-      left: 50%;
-      transform: translateX(-50%);
-      font-size: 11px;
-      font-weight: 900;
-      letter-spacing: 0.22em;
-      text-transform: uppercase;
-      color: #ffffff18;
-      white-space: nowrap;
-      animation: pulse 2.4s ease-in-out infinite;
+      position: fixed; bottom: clamp(90px,12vh,120px);
+      left: 50%; transform: translateX(-50%);
+      font-size: 11px; font-weight: 900; letter-spacing: 0.22em;
+      text-transform: uppercase; color: #ffffff22; white-space: nowrap;
+      animation: pulse 2.5s ease-in-out infinite;
     }
-    @keyframes pulse { 0%,100%{opacity:.3} 50%{opacity:.9} }
+    @keyframes pulse { 0%,100%{opacity:.25} 50%{opacity:.85} }
   </style>
 </head>
 <body>
-
   <canvas id="dust"></canvas>
-
   <div class="stage">
     <div class="date">05.05.2026</div>
     <div class="label">Launch Date</div>
   </div>
-
-  <div class="logo-wrap">
-    <div class="logo">vehob</div>
-  </div>
-
+  <div class="logo-wrap"><div class="logo">vehob</div></div>
   <div class="hint">swipe to reveal</div>
 
   <script>
     const canvas = document.getElementById('dust');
     const ctx    = canvas.getContext('2d');
-    let W, H, animId;
+    let W, H, cols, rows, N, imgData;
 
-    // ── Grid config ───────────────────────────────────────────────────
-    const GRID        = 4;    // px per cell
-    const REPEL_R     = 75;   // repulsion radius in px
-    const REPEL_FORCE = 1.4;  // push strength
-    const FRICTION    = 0.86; // velocity decay per frame
-    const FLOW_RATE   = 0.15; // fraction of height that flows per unit speed
+    // ── tunables ──────────────────────────────────────────────────────
+    const GRID         = 2;    // 2 px per grain — fine sand texture
+    const REPEL_R      = 85;   // repulsion radius px
+    const REPEL_FORCE  = 5.0;  // push strength
+    const FRICTION     = 0.84; // velocity decay
+    const FLOW         = 0.45; // height transfer fraction per frame
+    const NORM_SCALE   = 11;   // normal gradient strength → 3D depth
+    const GRAIN_NOISE  = 0.55; // per-grain normal jitter (grain texture)
 
-    let cols, rows, n;
-    let heights;              // Float32Array — sand height per cell
-    let velX, velY;           // Float32Array — velocity per cell
-    let grainR, grainG, grainB; // Uint8Array — baked grain colors
-    let imageData;
+    // typed arrays — all grain data
+    let H_cur, H_nxt;          // height field (Float32)
+    let VX, VY;                // velocity (Float32)
+    let GR, GG, GB;            // baked color (Uint8)
+    let NX, NY;                // baked normal noise (Float32, range ±1)
 
-    const pointer = { x: -9999, y: -9999, active: false };
+    const ptr = { x: -9999, y: -9999, on: false };
+    const rand = (a, b) => Math.random() * (b - a) + a;
 
-    function rand(a, b) { return Math.random() * (b - a) + a; }
-
-    // ── Build grid ────────────────────────────────────────────────────
-    function resize() {
+    // ── init ──────────────────────────────────────────────────────────
+    function build() {
       W = canvas.width  = window.innerWidth;
       H = canvas.height = window.innerHeight;
       cols = Math.ceil(W / GRID);
       rows = Math.ceil(H / GRID);
-      n    = cols * rows;
+      N    = cols * rows;
 
-      heights = new Float32Array(n);
-      velX    = new Float32Array(n);
-      velY    = new Float32Array(n);
-      grainR  = new Uint8Array(n);
-      grainG  = new Uint8Array(n);
-      grainB  = new Uint8Array(n);
+      H_cur = new Float32Array(N);
+      H_nxt = new Float32Array(N);
+      VX    = new Float32Array(N);
+      VY    = new Float32Array(N);
+      GR    = new Uint8Array(N);
+      GG    = new Uint8Array(N);
+      GB    = new Uint8Array(N);
+      NX    = new Float32Array(N);
+      NY    = new Float32Array(N);
 
       for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
           const i = r * cols + c;
-          // Low-frequency dune bumps + micro noise
-          const dune =
-            Math.sin(c * 0.06 + r * 0.04) * 0.13 +
-            Math.sin(c * 0.11 - r * 0.08) * 0.09 +
-            Math.sin(c * 0.03 + r * 0.13) * 0.05;
-          heights[i] = 0.90 + dune + rand(-0.05, 0.05);
-          grainR[i]  = rand(150, 255) | 0;
-          grainG[i]  = rand(38,  112) | 0;
-          grainB[i]  = rand(0,   20)  | 0;
+          // dune macro-shape
+          const d =
+            Math.sin(c * 0.055 + r * 0.038) * 0.14 +
+            Math.sin(c * 0.112 - r * 0.071) * 0.09 +
+            Math.sin(c * 0.029 + r * 0.095) * 0.06;
+          H_cur[i] = 0.92 + d + rand(-0.04, 0.04);
+
+          // grain color — warm orange/rust range with variation
+          GR[i] = rand(145, 252) | 0;
+          GG[i] = rand(35,  108) | 0;
+          GB[i] = rand(0,   18)  | 0;
+
+          // per-grain normal perturbation (baked once, gives grain texture)
+          NX[i] = rand(-1, 1);
+          NY[i] = rand(-1, 1);
         }
       }
 
-      imageData = ctx.createImageData(W, H);
+      imgData = ctx.createImageData(W, H);
     }
 
-    // ── Repulsion: push velocity outward from cursor ──────────────────
-    function applyRepulsion(px, py) {
+    // ── repulsion ─────────────────────────────────────────────────────
+    function repel(px, py) {
       const cx = (px / GRID) | 0;
       const cy = (py / GRID) | 0;
       const br = (REPEL_R / GRID) | 0;
 
       for (let dy = -br; dy <= br; dy++) {
         for (let dx = -br; dx <= br; dx++) {
-          const nx = cx + dx, ny = cy + dy;
-          if (nx < 1 || nx >= cols - 1 || ny < 1 || ny >= rows - 1) continue;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist < br && dist > 0.5) {
-            const f   = (1 - dist / br) * (1 - dist / br) * REPEL_FORCE;
-            const idx = ny * cols + nx;
-            velX[idx] += (dx / dist) * f;
-            velY[idx] += (dy / dist) * f;
-          }
+          const nc = cx + dx, nr = cy + dy;
+          if (nc < 1 || nc >= cols-1 || nr < 1 || nr >= rows-1) continue;
+          const d2 = dx*dx + dy*dy;
+          if (d2 >= br*br || d2 < 1) continue;
+          const d   = Math.sqrt(d2);
+          const f   = (1 - d/br) * (1 - d/br) * REPEL_FORCE;
+          const idx = nr * cols + nc;
+          VX[idx] += (dx/d) * f;
+          VY[idx] += (dy/d) * f;
         }
       }
     }
 
-    // ── Physics step: flow height between cells ───────────────────────
+    // ── physics step ──────────────────────────────────────────────────
     function step() {
-      const newH = new Float32Array(heights);
+      H_nxt.set(H_cur);
 
-      for (let r = 1; r < rows - 1; r++) {
-        for (let c = 1; c < cols - 1; c++) {
+      for (let r = 1; r < rows-1; r++) {
+        for (let c = 1; c < cols-1; c++) {
           const i = r * cols + c;
 
-          velX[i] *= FRICTION;
-          velY[i] *= FRICTION;
+          VX[i] *= FRICTION;
+          VY[i] *= FRICTION;
 
-          const speed = Math.sqrt(velX[i] * velX[i] + velY[i] * velY[i]);
-          if (speed < 0.005) continue;
+          const vx = VX[i], vy = VY[i];
+          const spd = Math.sqrt(vx*vx + vy*vy);
+          if (spd < 0.008) continue;
 
-          // How much height to move this frame
-          const flow = Math.min(heights[i] * FLOW_RATE * speed, heights[i] * 0.18);
+          // Distribute height in both x and y proportionally
+          const h = H_cur[i];
+          const fx = Math.min(h * FLOW * Math.abs(vx), h * 0.3);
+          const fy = Math.min(h * FLOW * Math.abs(vy), h * 0.3);
 
-          // Target cell in velocity direction
-          const tc = c + (velX[i] > 0 ? 1 : -1);
-          const tr = r + (velY[i] > 0 ? 1 : -1);
-          if (tc >= 0 && tc < cols && tr >= 0 && tr < rows) {
-            const ti = tr * cols + tc;
-            newH[i]  -= flow;
-            newH[ti] += flow;
+          if (fx > 0.0001) {
+            const tc = vx > 0 ? c+1 : c-1;
+            H_nxt[i]          -= fx;
+            H_nxt[r*cols+tc]  += fx;
+          }
+          if (fy > 0.0001) {
+            const tr = vy > 0 ? r+1 : r-1;
+            H_nxt[i]          -= fy;
+            H_nxt[tr*cols+c]  += fy;
           }
         }
       }
 
-      heights.set(newH);
+      // Swap buffers
+      const tmp = H_cur; H_cur = H_nxt; H_nxt = tmp;
     }
 
-    // ── Render: height map → 3D lit pixels ───────────────────────────
+    // ── render ────────────────────────────────────────────────────────
     function render() {
-      const data = imageData.data;
+      const data = imgData.data;
 
-      // Primary light: top-left
-      const LX = -0.5, LY = -0.8, LZ = 0.9;
-      const LL  = Math.sqrt(LX*LX + LY*LY + LZ*LZ);
-      const nlx = LX/LL, nly = LY/LL, nlz = LZ/LL;
+      // Light: top-left
+      const lx = -0.5, ly = -0.78, lz = 0.9;
+      const ll  = Math.sqrt(lx*lx + ly*ly + lz*lz);
+      const nlx = lx/ll, nly = ly/ll, nlz = lz/ll;
 
-      for (let r = 1; r < rows - 1; r++) {
-        for (let c = 1; c < cols - 1; c++) {
-          const i = r * cols + c;
-          const h = heights[i];
+      for (let r = 1; r < rows-1; r++) {
+        for (let c = 1; c < cols-1; c++) {
+          const i  = r * cols + c;
+          const h  = H_cur[i];
 
-          // Surface normal from gradient (strong scale = dramatic 3D)
-          const gx = (heights[i + 1]    - heights[i - 1])    * 8.0;
-          const gy = (heights[i + cols] - heights[i - cols]) * 8.0;
-          const gz = 1.0;
+          // Surface normal: smooth gradient + per-grain noise
+          const sgx = (H_cur[i+1]    - H_cur[i-1])    * NORM_SCALE;
+          const sgy = (H_cur[i+cols] - H_cur[i-cols]) * NORM_SCALE;
+          const gx  = sgx + NX[i] * GRAIN_NOISE;
+          const gy  = sgy + NY[i] * GRAIN_NOISE;
+          const gz  = 1.0;
           const gl  = Math.sqrt(gx*gx + gy*gy + gz*gz);
           const nx  = -gx/gl, ny = -gy/gl, nz = gz/gl;
 
-          // Lambertian diffuse
-          const ndotl  = nx*nlx + ny*nly + nz*nlz;
-          const diffuse = Math.max(0, ndotl);
-          const light   = 0.20 + 0.80 * diffuse;
+          // Diffuse
+          const ndl   = nx*nlx + ny*nly + nz*nlz;
+          const diff  = Math.max(0, ndl);
+          const light = 0.18 + 0.82 * diff;
 
-          // Blinn-Phong specular
+          // Specular (tight — sand grains glint)
           const hx = nlx, hy = nly, hz = nlz + 1;
           const hl  = Math.sqrt(hx*hx + hy*hy + hz*hz);
-          const spec = Math.pow(Math.max(0, nx*(hx/hl) + ny*(hy/hl) + nz*(hz/hl)), 28) * 0.85;
+          const sp  = Math.pow(Math.max(0, nx*(hx/hl)+ny*(hy/hl)+nz*(hz/hl)), 38) * 1.0;
 
-          // Height boost: piled sand catches more light
-          const hb = h > 1.0 ? 1 + (h - 1.0) * 0.9 : 1.0;
+          // Piled sand is raised and catches more highlight
+          const hb = h > 1.0 ? 1 + (h-1)*1.1 : h < 0.6 ? h*0.8 : 1.0;
 
-          const clamp = v => v < 0 ? 0 : v > 255 ? 255 : v | 0;
-          const R = clamp(grainR[i] * light * hb + spec * 255);
-          const G = clamp(grainG[i] * light * hb + spec * 210);
-          const B = clamp(grainB[i] * light * hb + spec * 170);
-          // Alpha: low areas become transparent so content shows through
-          const A = Math.min(255, (Math.min(h, 1) * 255) | 0);
+          const cl  = (v) => v < 0 ? 0 : v > 255 ? 255 : v | 0;
+          const R   = cl(GR[i] * light * hb + sp * 255);
+          const G   = cl(GG[i] * light * hb + sp * 215);
+          const B   = cl(GB[i] * light * hb + sp * 175);
+          // Thin sand becomes slightly transparent — content peeks through
+          const A   = cl(Math.min(h * 1.1, 1.0) * 255);
 
           const px0 = c * GRID, py0 = r * GRID;
           for (let dy = 0; dy < GRID; dy++) {
-            let pi = ((py0 + dy) * W + px0) * 4;
+            let pi = ((py0+dy)*W + px0) * 4;
             for (let dx = 0; dx < GRID; dx++, pi += 4) {
               data[pi]   = R;
               data[pi+1] = G;
@@ -259,34 +241,32 @@
         }
       }
 
-      ctx.putImageData(imageData, 0, 0);
+      ctx.putImageData(imgData, 0, 0);
     }
 
-    // ── Loop ──────────────────────────────────────────────────────────
-    function draw() {
+    // ── loop ──────────────────────────────────────────────────────────
+    function loop() {
       step();
       render();
-      animId = requestAnimationFrame(draw);
+      requestAnimationFrame(loop);
     }
 
-    resize();
-    draw();
+    build();
+    loop();
 
-    // ── Input ─────────────────────────────────────────────────────────
+    // ── input ─────────────────────────────────────────────────────────
     window.addEventListener('mousemove', e => {
-      pointer.x = e.clientX; pointer.y = e.clientY; pointer.active = true;
-      applyRepulsion(e.clientX, e.clientY);
+      ptr.x = e.clientX; ptr.y = e.clientY; ptr.on = true;
+      repel(e.clientX, e.clientY);
     });
-    window.addEventListener('mouseleave', () => { pointer.active = false; });
+    window.addEventListener('mouseleave', () => { ptr.on = false; });
 
     window.addEventListener('touchmove', e => {
       const t = e.touches[0];
-      pointer.x = t.clientX; pointer.y = t.clientY; pointer.active = true;
-      applyRepulsion(t.clientX, t.clientY);
+      repel(t.clientX, t.clientY);
     }, { passive: true });
-    window.addEventListener('touchend', () => { pointer.active = false; });
 
-    window.addEventListener('resize', resize);
+    window.addEventListener('resize', build);
   </script>
 </body>
 </html>
