@@ -67,7 +67,7 @@
     const PUSH_FORCE = 5.0;  // edge scatter force
     const FRICTION   = 0.88;
     const FLOW       = 0.40;
-    const NORM_SCALE = 3.5;
+    const NORM_SCALE = 8.0;
     const GRAIN_NS   = 0.25;
 
     let H_cur, H_nxt, VX, VY, GR, GG, GB, GNX, GNY;
@@ -75,6 +75,7 @@
     // pointer velocity (px/frame)
     let pX = null, pY = null, pT = null;
     let vX = 0, vY = 0;
+    let waveTime = 0;
 
     const rand = (a, b) => Math.random() * (b - a) + a;
 
@@ -110,16 +111,8 @@
       for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
           const i = r * cols + c;
-          // 4 big diagonal waves — 2 left of logo, 2 right of logo
-          const bw  = cols * 0.13;
-          const lx1 = lcx - cols * 0.32, lx2 = lcx - cols * 0.13;
-          const rx1 = lcx + cols * 0.13, rx2 = lcx + cols * 0.32;
-          const g = (cx) => Math.exp(-0.5 * ((c - cx) / bw) ** 2);
-          const w1 = g(lx1) * Math.sin((c + r) * 0.13 + 0.0) * 0.25;
-          const w2 = g(lx2) * Math.sin((c - r) * 0.13 + 1.6) * 0.25;
-          const w3 = g(rx1) * Math.sin((c + r) * 0.13 + 3.2) * 0.25;
-          const w4 = g(rx2) * Math.sin((c - r) * 0.13 + 4.8) * 0.25;
-          const dune = w1 + w2 + w3 + w4;
+          // 4 parallel diagonal waves (NE→SW, no crossing)
+          const dune = Math.sin((c + r) * 0.018) * 0.30;
           // Detect logo regions — bigger size, more contrast
           const dc = c - lcx, dr = r - lcy;
 
@@ -298,8 +291,20 @@
       ctx.putImageData(imgData, 0, 0);
     }
 
+    // ── Wave animation: gently drift height toward moving wave target ─
+    function animateWaves() {
+      waveTime += 0.014;
+      for (let r = 1; r < rows-1; r++) {
+        for (let c = 1; c < cols-1; c++) {
+          const i = r * cols + c;
+          const target = 1.5 + Math.sin((c + r) * 0.018 + waveTime) * 0.30;
+          H_cur[i] += (target - H_cur[i]) * 0.03;
+        }
+      }
+    }
+
     // ── Loop ──────────────────────────────────────────────────────────
-    function loop() { step(); render(); requestAnimationFrame(loop); }
+    function loop() { animateWaves(); step(); render(); requestAnimationFrame(loop); }
 
     build();
     loop();
