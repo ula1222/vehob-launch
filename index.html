@@ -234,13 +234,10 @@
           const hl  = Math.sqrt(hx*hx + hy*hy + hz*hz);
           const sp  = Math.pow(Math.max(0, nx*(hx/hl)+ny*(hy/hl)+nz*(hz/hl)), 40) * 0.25;
 
-          // Slight height boost for piled areas
-          const hb = h > 1.05 ? 1 + (h-1)*0.3 : 1.0;
-
           const cl  = v => v < 0 ? 0 : v > 255 ? 255 : v | 0;
-          const R   = cl(GR[i] * light * hb + sp * 255);
-          const G   = cl(GG[i] * light * hb + sp * 90);
-          const B   = cl(GB[i] * light * hb + sp * 20);
+          const R   = cl(GR[i] * light + sp * 200);
+          const G   = cl(GG[i] * light + sp * 30);
+          const B   = cl(GB[i] * light);
           // Content shows through as powder scatters
           const A   = cl(Math.min(h, 1.0) * 255);
 
