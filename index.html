@@ -107,34 +107,29 @@
           // Detect logo regions — bigger size, more contrast
           const dc = c - lcx, dr = r - lcy;
 
-          // Big dark circle
-          const circR    = 120*S;
-          const inCircle = Math.sqrt(dc*dc + dr*dr) < circR;
-
-          // Wide V matching app icon: thick arms, wide angle, tip near circle bottom
-          const vTipY = lcy + circR - 12*S;
-          const dL = distSeg(c, r, lcx - 170*S, lcy - 80*S, lcx, vTipY);
-          const dR = distSeg(c, r, lcx + 170*S, lcy - 80*S, lcx, vTipY);
-          const inVarm = dL < 22*S || dR < 22*S;
-          const inV    = inCircle && inVarm;
-
-          const inDot = Math.sqrt(dc*dc + (r-(lcy-20*S))*(r-(lcy-20*S))) < 14*S;
+          // vv double-V logo — no circle, dark red on bright red powder
+          // 5 key points (in cells relative to lcx/lcy):
+          //   top-left (-85,-65), left-trough (-28,+60), center-top (0,-50),
+          //   right-trough (+28,+60), top-right (+85,-65)
+          const TLx = lcx-85*S, TLy = lcy-65*S;
+          const LTx = lcx-28*S, LTy = lcy+60*S;
+          const CTx = lcx,      CTy = lcy-50*S;
+          const RTx = lcx+28*S, RTy = lcy+60*S;
+          const TRx = lcx+85*S, TRy = lcy-65*S;
+          const thick = 13*S;
+          const inVV =
+            distSeg(c,r, TLx,TLy, LTx,LTy) < thick ||  // left arm of left V
+            distSeg(c,r, LTx,LTy, CTx,CTy) < thick ||  // right arm of left V
+            distSeg(c,r, CTx,CTy, RTx,RTy) < thick ||  // left arm of right V
+            distSeg(c,r, RTx,RTy, TRx,TRy) < thick;    // right arm of right V
 
           H_cur[i] = 1.5 + dune + rand(-0.04, 0.04);
 
-          if (inDot) {
-            GR[i] = rand(240, 255) | 0;
-            GG[i] = rand(190, 230) | 0;
-            GB[i] = rand(0,   20)  | 0;
-          } else if (inV) {
-            // Very dark V for strong contrast against circle bg
-            GR[i] = rand(28,  55)  | 0;
-            GG[i] = rand(0,   3)   | 0;
+          if (inVV) {
+            // Dark red vv logo — strong contrast against bright red powder
+            GR[i] = rand(55,  90)  | 0;
+            GG[i] = rand(0,   5)   | 0;
             GB[i] = rand(0,   2)   | 0;
-          } else if (inCircle) {
-            GR[i] = rand(90,  125) | 0;
-            GG[i] = rand(0,   6)   | 0;
-            GB[i] = rand(0,   3)   | 0;
           } else {
             GR[i] = rand(210, 255) | 0;
             GG[i] = rand(0,   15)  | 0;
