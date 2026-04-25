@@ -304,13 +304,15 @@
     }
 
     // ── Loop ──────────────────────────────────────────────────────────
-    function loop() { animateWaves(); step(); render(); requestAnimationFrame(loop); }
+    let wavesActive = true;
+    function loop() { if (wavesActive) animateWaves(); step(); render(); requestAnimationFrame(loop); }
 
     build();
     loop();
 
     // ── Input ─────────────────────────────────────────────────────────
     function onMove(x, y) {
+      wavesActive = false;
       const now = performance.now();
       if (pX !== null) {
         const dt = Math.max(1, Math.min(50, now - pT));
