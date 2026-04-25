@@ -115,22 +115,20 @@
           // Detect logo regions — bigger size, more contrast
           const dc = c - lcx, dr = r - lcy;
 
-          // Two SEPARATE V letters — gap between them so it reads vv not W
+          // vv logo — symmetric tapered strokes, wide at serif tops, thin at troughs
+          // 5 key points symmetric around center
           const vCY = lcy + 5*S;
-          // Left V (larger)
-          const LV_TL = [lcx-90*S, vCY-78*S];
-          const LV_B  = [lcx-14*S, vCY+65*S];
-          const LV_TR = [lcx+8*S,  vCY-68*S];
-          // Right V (smaller) — starts with a gap from left V's right top
-          const RV_TL = [lcx+26*S, vCY-55*S];
-          const RV_B  = [lcx+50*S, vCY+52*S];
-          const RV_TR = [lcx+84*S, vCY-55*S];
+          const TL  = [lcx-92*S, vCY-78*S];  // outer top-left
+          const LB  = [lcx-22*S, vCY+68*S];  // left trough
+          const TC  = [lcx,      vCY-60*S];  // center top peak
+          const RB  = [lcx+22*S, vCY+68*S];  // right trough
+          const TR  = [lcx+92*S, vCY-78*S];  // outer top-right
 
           const inVV =
-            tapSeg(c,r, LV_TL[0],LV_TL[1], LV_B[0],LV_B[1], 22*S, 9*S) ||
-            tapSeg(c,r, LV_B[0], LV_B[1],  LV_TR[0],LV_TR[1], 9*S,16*S) ||
-            tapSeg(c,r, RV_TL[0],RV_TL[1], RV_B[0],RV_B[1], 14*S, 7*S) ||
-            tapSeg(c,r, RV_B[0], RV_B[1],  RV_TR[0],RV_TR[1], 7*S,14*S);
+            tapSeg(c,r, TL[0],TL[1], LB[0],LB[1], 22*S, 9*S) ||  // outer left arm — wide serif top
+            tapSeg(c,r, LB[0],LB[1], TC[0],TC[1],  9*S,18*S) ||  // inner left arm — thin at trough
+            tapSeg(c,r, TC[0],TC[1], RB[0],RB[1], 18*S, 9*S) ||  // inner right arm
+            tapSeg(c,r, RB[0],RB[1], TR[0],TR[1],  9*S,22*S);    // outer right arm — wide serif top
 
           H_cur[i] = 1.5 + dune + rand(-0.04, 0.04);
 
