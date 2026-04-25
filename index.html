@@ -203,40 +203,21 @@
       const tmp = H_cur; H_cur = H_nxt; H_nxt = tmp;
     }
 
-    // ── Render: height map → lit 3D powder pixels ────────────────────
+    // ── Render: grain color + subtle per-grain brightness variation ──
     function render() {
       const data = imgData.data;
-
-      // Light from top-left
-      const lx = -0.5, ly = -0.75, lz = 0.9;
-      const ll  = Math.sqrt(lx*lx + ly*ly + lz*lz);
-      const nlx = lx/ll, nly = ly/ll, nlz = lz/ll;
 
       for (let r = 1; r < rows-1; r++) {
         for (let c = 1; c < cols-1; c++) {
           const i = r * cols + c;
           const h = H_cur[i];
 
-          // Clamp raw gradient so sharp clear/full boundaries can't produce extreme normals
-          const clampG = v => v > 0.3 ? 0.3 : v < -0.3 ? -0.3 : v;
-          const gx = clampG(H_cur[i+1]    - H_cur[i-1])    * NORM_SCALE + GNX[i] * GRAIN_NS;
-          const gy = clampG(H_cur[i+cols] - H_cur[i-cols]) * NORM_SCALE + GNY[i] * GRAIN_NS;
-          const gz = 1.0;
-          const gl  = Math.sqrt(gx*gx + gy*gy + gz*gz);
-          const nx  = -gx/gl, ny = -gy/gl, nz = gz/gl;
-
-          // Diffuse (Lambert)
-          const ndl   = nx*nlx + ny*nly + nz*nlz;
-          const light = 0.22 + 0.78 * Math.max(0, ndl);
-
-          // Specular (Blinn-Phong — powder has soft sheen)
-          const hx = nlx, hy = nly, hz = nlz + 1;
-          const hl  = Math.sqrt(hx*hx + hy*hy + hz*hz);
-          const sp  = Math.pow(Math.max(0, nx*(hx/hl)+ny*(hy/hl)+nz*(hz/hl)), 40) * 0.25;
+          // Per-grain brightness variation only — no height-gradient normals (they cause edge glow)
+          const light = 0.72 + GNX[i] * 0.18 + GNY[i] * 0.10;
 
           const cl  = v => v < 0 ? 0 : v > 255 ? 255 : v | 0;
-          const R   = cl(GR[i] * light + sp * 200);
-          const G   = cl(GG[i] * light + sp * 30);
+          const R   = cl(GR[i] * light);
+          const G   = cl(GG[i] * light);
           const B   = cl(GB[i] * light);
           // Content shows through as powder scatters
           const A   = cl(Math.min(h, 1.0) * 255);
