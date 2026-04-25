@@ -108,17 +108,17 @@
           const dc = c - lcx, dr = r - lcy;
 
           // Big dark circle
-          const circR   = 120*S;
+          const circR    = 120*S;
           const inCircle = Math.sqrt(dc*dc + dr*dr) < circR;
 
-          // V tip touches bottom of circle; arms extend well outside so circle clips curved tops
-          const vTipY = lcy + circR - 8*S;
-          const dL = distSeg(c, r, lcx - 200*S, lcy - 160*S, lcx, vTipY);
-          const dR = distSeg(c, r, lcx + 200*S, lcy - 160*S, lcx, vTipY);
-          const inVarm = dL < 14*S || dR < 14*S;
+          // Wide V matching app icon: thick arms, wide angle, tip near circle bottom
+          const vTipY = lcy + circR - 12*S;
+          const dL = distSeg(c, r, lcx - 170*S, lcy - 80*S, lcx, vTipY);
+          const dR = distSeg(c, r, lcx + 170*S, lcy - 80*S, lcx, vTipY);
+          const inVarm = dL < 22*S || dR < 22*S;
           const inV    = inCircle && inVarm;
 
-          const inDot = Math.sqrt(dc*dc + (r-(lcy-40*S))*(r-(lcy-40*S))) < 13*S;
+          const inDot = Math.sqrt(dc*dc + (r-(lcy-20*S))*(r-(lcy-20*S))) < 14*S;
 
           H_cur[i] = 1.5 + dune + rand(-0.04, 0.04);
 
