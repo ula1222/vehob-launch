@@ -107,9 +107,9 @@
           GG[i]  = rand(65,  115) | 0;   // more green → brighter orange not dark red
           GB[i]  = rand(0,   15)  | 0;
 
-          // Per-grain brightness: wide range makes individual grains clearly visible
-          GNX[i] = rand(0.72, 1.28);
-          GNY[i] = rand(-1, 1);           // kept for future use
+          // Wide brightness range so adjacent grains have clear contrast
+          GNX[i] = rand(0.58, 1.42);
+          GNY[i] = rand(-1, 1);
         }
       }
 
@@ -219,9 +219,9 @@
           for (let dy = 0; dy < GRID; dy++) {
             let pi = ((py0+dy) * W + px0) * 4;
             for (let dx = 0; dx < GRID; dx++, pi += 4) {
-              // Bump: center of 3x3 grain = bright highlight, edges = shadow → rounded 3D grain
-              const cx = dx - 1, cy = dy - 1; // offset from center (-1,0,1)
-              const bump = 1.0 - (cx*cx + cy*cy) * 0.07; // 1.0 center, ~0.86 corners
+              // Strong bump: bright center, dark edges → each grain looks like a rounded particle
+              const cx = dx - 1, cy = dy - 1;
+              const bump = 1.0 - (cx*cx + cy*cy) * 0.18; // 1.0 center, 0.64 corners
               const light = GNX[i] * bump;
               data[pi]   = cl(GR[i] * light);
               data[pi+1] = cl(GG[i] * light);
