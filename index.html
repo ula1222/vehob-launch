@@ -45,6 +45,18 @@
     <div class="label">Launch Date</div>
   </div>
   <div class="logo-wrap"><div class="logo">vehob</div></div>
+  <!-- SVG vv logo revealed under powder on swipe -->
+  <svg id="vv-logo" viewBox="-110 -90 220 175" xmlns="http://www.w3.org/2000/svg"
+       style="position:fixed;left:50%;top:50%;transform:translate(-50%,-52%);width:min(44vw,44vh);height:auto;z-index:5;pointer-events:none;opacity:1;">
+    <!-- Left V — larger -->
+    <polyline points="-88,-72 -14,68 10,-62"
+      fill="none" stroke="#5a0a0a" stroke-width="20"
+      stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- Right V — smaller -->
+    <polyline points="26,-54 50,54 84,-54"
+      fill="none" stroke="#5a0a0a" stroke-width="15"
+      stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>
   <canvas id="c"></canvas>
 
   <script>
@@ -115,33 +127,11 @@
           // Detect logo regions — bigger size, more contrast
           const dc = c - lcx, dr = r - lcy;
 
-          // vv logo — symmetric tapered strokes, wide at serif tops, thin at troughs
-          // 5 key points symmetric around center
-          const vCY = lcy + 5*S;
-          const TL  = [lcx-92*S, vCY-78*S];  // outer top-left
-          const LB  = [lcx-22*S, vCY+68*S];  // left trough
-          const TC  = [lcx,      vCY-60*S];  // center top peak
-          const RB  = [lcx+22*S, vCY+68*S];  // right trough
-          const TR  = [lcx+92*S, vCY-78*S];  // outer top-right
-
-          const inVV =
-            tapSeg(c,r, TL[0],TL[1], LB[0],LB[1], 22*S, 9*S) ||  // outer left arm — wide serif top
-            tapSeg(c,r, LB[0],LB[1], TC[0],TC[1],  9*S,18*S) ||  // inner left arm — thin at trough
-            tapSeg(c,r, TC[0],TC[1], RB[0],RB[1], 18*S, 9*S) ||  // inner right arm
-            tapSeg(c,r, RB[0],RB[1], TR[0],TR[1],  9*S,22*S);    // outer right arm — wide serif top
-
           H_cur[i] = 1.5 + dune + rand(-0.04, 0.04);
 
-          if (inVV) {
-            // Dark red vv logo — strong contrast against bright red powder
-            GR[i] = rand(55,  90)  | 0;
-            GG[i] = rand(0,   5)   | 0;
-            GB[i] = rand(0,   2)   | 0;
-          } else {
-            GR[i] = rand(210, 255) | 0;
-            GG[i] = rand(0,   15)  | 0;
-            GB[i] = rand(0,   3)   | 0;
-          }
+          GR[i] = rand(210, 255) | 0;
+          GG[i] = rand(0,   15)  | 0;
+          GB[i] = rand(0,   3)   | 0;
 
           // Baked per-grain normal noise for powder texture
           GNX[i] = rand(-1, 1);
