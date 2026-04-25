@@ -98,6 +98,14 @@
         const t = Math.max(0, Math.min(1, ((px-ax)*abx+(py-ay)*aby)/len2));
         return Math.sqrt((px-ax-t*abx)*(px-ax-t*abx)+(py-ay-t*aby)*(py-ay-t*aby));
       }
+      // Tapered stroke: thickA at start, thickB at end
+      function tapSeg(px, py, ax, ay, bx, by, thickA, thickB) {
+        const abx=bx-ax, aby=by-ay, l2=abx*abx+aby*aby;
+        if (!l2) return false;
+        const t=Math.max(0,Math.min(1,((px-ax)*abx+(py-ay)*aby)/l2));
+        const dx=px-ax-t*abx, dy=py-ay-t*aby;
+        return Math.sqrt(dx*dx+dy*dy) < thickA*(1-t)+thickB*t;
+      }
 
       for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
@@ -107,21 +115,20 @@
           // Detect logo regions — bigger size, more contrast
           const dc = c - lcx, dr = r - lcy;
 
-          // Two separate V letters side by side — NOT connected like a W
-          // Left V (bigger)
-          const L_TL_x = lcx-82*S, L_TL_y = lcy-72*S;  // top-left
-          const L_Bot_x= lcx-12*S, L_Bot_y= lcy+58*S;   // bottom point
-          const L_TR_x = lcx+12*S, L_TR_y = lcy-68*S;   // top-right
-          // Right V (smaller, offset right, slightly lower)
-          const R_TL_x = lcx+26*S, R_TL_y = lcy-52*S;
-          const R_Bot_x= lcx+50*S, R_Bot_y= lcy+48*S;
-          const R_TR_x = lcx+82*S, R_TR_y = lcy-52*S;
+          // vv logo — symmetric tapered strokes, wide at serif tops, thin at troughs
+          // 5 key points symmetric around center
+          const vCY = lcy + 5*S;
+          const TL  = [lcx-92*S, vCY-78*S];  // outer top-left
+          const LB  = [lcx-22*S, vCY+68*S];  // left trough
+          const TC  = [lcx,      vCY-60*S];  // center top peak
+          const RB  = [lcx+22*S, vCY+68*S];  // right trough
+          const TR  = [lcx+92*S, vCY-78*S];  // outer top-right
 
           const inVV =
-            distSeg(c,r, L_TL_x,L_TL_y, L_Bot_x,L_Bot_y) < 14*S ||
-            distSeg(c,r, L_Bot_x,L_Bot_y, L_TR_x,L_TR_y) < 14*S ||
-            distSeg(c,r, R_TL_x,R_TL_y, R_Bot_x,R_Bot_y) < 11*S ||
-            distSeg(c,r, R_Bot_x,R_Bot_y, R_TR_x,R_TR_y) < 11*S;
+            tapSeg(c,r, TL[0],TL[1], LB[0],LB[1], 22*S, 9*S) ||  // outer left arm — wide serif top
+            tapSeg(c,r, LB[0],LB[1], TC[0],TC[1],  9*S,18*S) ||  // inner left arm — thin at trough
+            tapSeg(c,r, TC[0],TC[1], RB[0],RB[1], 18*S, 9*S) ||  // inner right arm
+            tapSeg(c,r, RB[0],RB[1], TR[0],TR[1],  9*S,22*S);    // outer right arm — wide serif top
 
           H_cur[i] = 1.5 + dune + rand(-0.04, 0.04);
 
