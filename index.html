@@ -36,14 +36,6 @@
       background: linear-gradient(90deg,#FF6B00,#FF3B3B);
       -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
     }
-    .hint {
-      position: fixed; bottom: clamp(90px,12vh,120px);
-      left: 50%; transform: translateX(-50%);
-      font-size: 11px; font-weight: 900; letter-spacing: 0.22em;
-      text-transform: uppercase; color: #ffffff22; white-space: nowrap;
-      pointer-events: none; animation: pulse 2.5s ease-in-out infinite;
-    }
-    @keyframes pulse { 0%,100%{opacity:.2} 50%{opacity:.8} }
     #c { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
   </style>
 </head>
@@ -53,7 +45,6 @@
     <div class="label">Launch Date</div>
   </div>
   <div class="logo-wrap"><div class="logo">vehob</div></div>
-  <div class="hint">swipe to reveal</div>
   <canvas id="c"></canvas>
 
   <script>
