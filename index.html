@@ -67,8 +67,8 @@
     const PUSH_FORCE = 5.0;  // edge scatter force
     const FRICTION   = 0.88;
     const FLOW       = 0.40;
-    const NORM_SCALE = 3.5;
-    const GRAIN_NS   = 0.25;
+    const NORM_SCALE = 1.2;
+    const GRAIN_NS   = 0.2;
 
     let H_cur, H_nxt, VX, VY, GR, GG, GB, GNX, GNY;
 
@@ -233,8 +233,8 @@
           const hl  = Math.sqrt(hx*hx + hy*hy + hz*hz);
           const sp  = Math.pow(Math.max(0, nx*(hx/hl)+ny*(hy/hl)+nz*(hz/hl)), 22) * 0.7;
 
-          // Height boost: piled powder is brighter/raised
-          const hb = h > 1.05 ? 1 + (h-1)*1.0 : 1.0;
+          // Slight height boost for piled areas
+          const hb = h > 1.05 ? 1 + (h-1)*0.3 : 1.0;
 
           const cl  = v => v < 0 ? 0 : v > 255 ? 255 : v | 0;
           const R   = cl(GR[i] * light * hb + sp * 255);
