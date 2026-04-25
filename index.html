@@ -63,12 +63,12 @@
 
     // ── Grid ─────────────────────────────────────────────────────────
     const GRID       = 3;    // px per cell
-    const PUSH_R     = 65;   // push brush radius px
-    const PUSH_FORCE = 4.0;  // how hard cursor pushes
-    const FRICTION   = 0.88; // velocity decay
-    const FLOW       = 0.32; // height transfer per frame
-    const NORM_SCALE = 7;    // normal gradient — 3D depth intensity
-    const GRAIN_NS   = 0.5;  // per-grain normal jitter
+    const PUSH_R     = 160;  // large brush — covers screen in 1-2 swipes
+    const PUSH_FORCE = 5.0;  // edge scatter force
+    const FRICTION   = 0.88;
+    const FLOW       = 0.40;
+    const NORM_SCALE = 7;
+    const GRAIN_NS   = 0.5;
 
     let H_cur, H_nxt, VX, VY, GR, GG, GB, GNX, GNY;
 
@@ -120,60 +120,40 @@
       imgData = ctx.createImageData(W, H);
     }
 
-    // ── Push: chaotic scatter, not a clean eraser line ────────────────
+    // ── Push: direct clear in center + scatter at edge ───────────────
     function push(px, py) {
       const speed = Math.sqrt(vX*vX + vY*vY);
-      if (speed < 0.1) return;
-
-      const cx   = (px / GRID) | 0;
-      const cy   = (py / GRID) | 0;
-      const br   = (PUSH_R / GRID) | 0;
+      const cx  = (px / GRID) | 0;
+      const cy  = (py / GRID) | 0;
+      const br  = (PUSH_R / GRID) | 0;
       const slen = Math.max(speed, 0.001);
-      const sdx  = vX / slen, sdy = vY / slen;
+      const sdx = vX / slen, sdy = vY / slen;
 
       for (let dy = -br; dy <= br; dy++) {
         for (let dx = -br; dx <= br; dx++) {
           const nc = cx + dx, nr = cy + dy;
           if (nc < 1 || nc >= cols-1 || nr < 1 || nr >= rows-1) continue;
           const d2 = dx*dx + dy*dy;
-          if (d2 >= br*br || d2 < 0.5) continue;
-
-          // ── Random skip: ~48% of grains don't get pushed ──
-          if (Math.random() > 0.52) continue;
-
-          const d       = Math.sqrt(d2);
-          const falloff = (1 - d/br) * (1 - d/br);
-          const rdx     = dx/d, rdy = dy/d;
-
-          // ── Large random angle deviation per grain ──
-          const angleNoise = (Math.random() - 0.5) * 1.4; // ±0.7 rad
-          const cos = Math.cos(angleNoise), sin = Math.sin(angleNoise);
-          const noiseX = sdx*cos - sdy*sin;
-          const noiseY = sdx*sin + sdy*cos;
-
-          // Mix: swipe + radial + pure random
-          const pdx = noiseX*0.45 + rdx*0.25 + (Math.random()-0.5)*0.6;
-          const pdy = noiseY*0.45 + rdy*0.25 + (Math.random()-0.5)*0.6;
-
-          const f   = falloff * PUSH_FORCE * (0.4 + Math.random()*1.0) * Math.min(speed*0.3+0.5, 2.5);
+          if (d2 >= br*br) continue;
+          const d = Math.sqrt(d2);
+          const t = d / br; // 0=center, 1=edge
           const idx = nr * cols + nc;
-          VX[idx] += pdx * f;
-          VY[idx] += pdy * f;
-        }
-      }
 
-      // ── Turbulence ring beyond brush — dusting cloud effect ──
-      const turR = (br * 1.7) | 0;
-      for (let dy = -turR; dy <= turR; dy++) {
-        for (let dx = -turR; dx <= turR; dx++) {
-          const nc = cx+dx, nr = cy+dy;
-          if (nc<1||nc>=cols-1||nr<1||nr>=rows-1) continue;
-          const d2 = dx*dx+dy*dy;
-          if (d2 < br*br || d2 >= turR*turR) continue;
-          if (Math.random() > 0.10) continue; // sparse — only 10% of ring cells
-          const idx = nr*cols+nc;
-          VX[idx] += (Math.random()-0.5) * speed * 0.18;
-          VY[idx] += (Math.random()-0.5) * speed * 0.18;
+          if (t < 0.65) {
+            // Inner zone: directly wipe height to 0 with ragged random edge
+            const wipe = (1 - t / 0.65) * (0.75 + Math.random() * 0.35);
+            H_cur[idx] = Math.max(0, H_cur[idx] - wipe);
+          } else {
+            // Outer zone: scatter outward in swipe direction
+            const rdx = dx / d, rdy = dy / d;
+            const angle = (Math.random() - 0.5) * 1.0;
+            const cos = Math.cos(angle), sin = Math.sin(angle);
+            const pdx = (sdx*0.6 + rdx*0.4) * cos - (sdy*0.6 + rdy*0.4) * sin;
+            const pdy = (sdx*0.6 + rdx*0.4) * sin + (sdy*0.6 + rdy*0.4) * cos;
+            const f = (t - 0.65) / 0.35 * PUSH_FORCE * (0.5 + Math.random());
+            VX[idx] += pdx * f;
+            VY[idx] += pdy * f;
+          }
         }
       }
     }
