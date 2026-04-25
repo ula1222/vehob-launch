@@ -107,21 +107,21 @@
           // Detect logo regions — bigger size, more contrast
           const dc = c - lcx, dr = r - lcy;
 
-          // vv double-V logo — no circle, dark red on bright red powder
-          // 5 key points (in cells relative to lcx/lcy):
-          //   top-left (-85,-65), left-trough (-28,+60), center-top (0,-50),
-          //   right-trough (+28,+60), top-right (+85,-65)
-          const TLx = lcx-85*S, TLy = lcy-65*S;
-          const LTx = lcx-28*S, LTy = lcy+60*S;
-          const CTx = lcx,      CTy = lcy-50*S;
-          const RTx = lcx+28*S, RTy = lcy+60*S;
-          const TRx = lcx+85*S, TRy = lcy-65*S;
-          const thick = 13*S;
+          // Two separate V letters side by side — NOT connected like a W
+          // Left V (bigger)
+          const L_TL_x = lcx-82*S, L_TL_y = lcy-72*S;  // top-left
+          const L_Bot_x= lcx-12*S, L_Bot_y= lcy+58*S;   // bottom point
+          const L_TR_x = lcx+12*S, L_TR_y = lcy-68*S;   // top-right
+          // Right V (smaller, offset right, slightly lower)
+          const R_TL_x = lcx+26*S, R_TL_y = lcy-52*S;
+          const R_Bot_x= lcx+50*S, R_Bot_y= lcy+48*S;
+          const R_TR_x = lcx+82*S, R_TR_y = lcy-52*S;
+
           const inVV =
-            distSeg(c,r, TLx,TLy, LTx,LTy) < thick ||  // left arm of left V
-            distSeg(c,r, LTx,LTy, CTx,CTy) < thick ||  // right arm of left V
-            distSeg(c,r, CTx,CTy, RTx,RTy) < thick ||  // left arm of right V
-            distSeg(c,r, RTx,RTy, TRx,TRy) < thick;    // right arm of right V
+            distSeg(c,r, L_TL_x,L_TL_y, L_Bot_x,L_Bot_y) < 14*S ||
+            distSeg(c,r, L_Bot_x,L_Bot_y, L_TR_x,L_TR_y) < 14*S ||
+            distSeg(c,r, R_TL_x,R_TL_y, R_Bot_x,R_Bot_y) < 11*S ||
+            distSeg(c,r, R_Bot_x,R_Bot_y, R_TR_x,R_TR_y) < 11*S;
 
           H_cur[i] = 1.5 + dune + rand(-0.04, 0.04);
 
