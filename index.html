@@ -116,25 +116,33 @@
           // Detect logo regions — bigger size, more contrast
           const dc = c - lcx, dr = r - lcy;
 
-          const inCircle = Math.sqrt(dc*dc + (dr - 12*S)*(dr - 12*S)) < 42*S;
-          const vTipY    = lcy + 20*S;
-          const inV      = distSeg(c,r, lcx-65*S, lcy-62*S, lcx, vTipY) < 15*S ||
-                           distSeg(c,r, lcx+65*S, lcy-62*S, lcx, vTipY) < 15*S;
-          const inDot    = Math.sqrt(dc*dc + (r-(lcy-70*S))*(r-(lcy-70*S))) < 10*S;
-          const inLogo   = Math.sqrt(dc*dc + dr*dr) < 100*S;
+          const inCircle = Math.sqrt(dc*dc + (dr - 12*S)*(dr - 12*S)) < 55*S;
+          const vTipY    = lcy + 28*S;
+          const inV      = distSeg(c,r, lcx-72*S, lcy-52*S, lcx, vTipY) < 22*S ||
+                           distSeg(c,r, lcx+72*S, lcy-52*S, lcx, vTipY) < 22*S;
+          const inDot    = Math.sqrt(dc*dc + (r-(lcy-58*S))*(r-(lcy-58*S))) < 14*S;
+          const inLogo   = Math.sqrt(dc*dc + dr*dr) < 110*S;
 
           H_cur[i] = 1.5 + dune + rand(-0.04, 0.04);
 
           if (inDot) {
-            GR[i] = rand(210, 245) | 0;
-            GG[i] = rand(145, 185) | 0;
-            GB[i] = rand(0,   15)  | 0;
-          } else if (inCircle || inV) {
-            GR[i] = rand(70,  120) | 0;  // very dark — maximum contrast
+            // Glowing yellow dot
+            GR[i] = rand(240, 255) | 0;
+            GG[i] = rand(190, 230) | 0;
+            GB[i] = rand(0,   20)  | 0;
+          } else if (inV) {
+            // Bold white V
+            GR[i] = rand(230, 255) | 0;
+            GG[i] = rand(210, 245) | 0;
+            GB[i] = rand(195, 235) | 0;
+          } else if (inCircle) {
+            // Dark recessed circle background
+            GR[i] = rand(65,  105) | 0;
             GG[i] = rand(0,   6)   | 0;
-            GB[i] = rand(0,   2)   | 0;
+            GB[i] = rand(0,   3)   | 0;
           } else if (inLogo) {
-            GR[i] = rand(130, 175) | 0;  // dark red background
+            // Outer logo ring — medium red
+            GR[i] = rand(160, 200) | 0;
             GG[i] = rand(0,   8)   | 0;
             GB[i] = rand(0,   2)   | 0;
           } else {
