@@ -107,19 +107,15 @@
             Math.sin(c * 0.028 + r * 0.100) * 0.05;
           H_cur[i] = 1.0 + dune + rand(-0.04, 0.04);
 
-          // Macro color clustering — large slow waves so nearby grains share similar tone
-          const macro =
-            0.75 + 0.25 * (
-              Math.sin(c * 0.07 + r * 0.05) * 0.6 +
-              Math.sin(c * 0.18 - r * 0.13) * 0.4
-            );
-          // Per-grain micro variation on top
-          const micro = rand(0.88, 1.12);
-          const bright = macro * micro;
+          // Bright vivid orange-red — match real chili/paprika powder
+          // Very subtle cluster variation, mostly per-grain micro noise
+          const cluster = 1.0 + 0.06 * Math.sin(c * 0.09 + r * 0.07) * Math.sin(c * 0.05 - r * 0.11);
+          const micro   = rand(0.90, 1.10);
+          const bright  = cluster * micro;
 
-          GR[i] = Math.min(255, (195 * bright + rand(0, 40))) | 0;
-          GG[i] = Math.min(255, (30  * bright + rand(0, 18))) | 0;
-          GB[i] = rand(0, 6) | 0;
+          GR[i] = Math.min(255, (238 * bright) | 0);
+          GG[i] = Math.min(255, (72  * bright + rand(0, 20)) | 0);
+          GB[i] = rand(0, 12) | 0;
 
           GNX[i] = rand(-1, 1);
           GNY[i] = rand(-1, 1);
@@ -127,7 +123,7 @@
       }
 
       // Sub-pixel baked noise: fine texture within each grain cell
-      for (let p = 0; p < W * H; p++) PN[p] = (rand(215, 255)) | 0;
+      for (let p = 0; p < W * H; p++) PN[p] = (rand(230, 255)) | 0;
 
       imgData = ctx.createImageData(W, H);
     }
@@ -224,10 +220,10 @@
           const i = r * cols + c;
           const h = H_cur[i];
 
-          // Micro-shadow: recessed grains are darker (right+down light direction)
-          const shadowRaw = Math.max(0, (H_cur[i+1] - h) + (H_cur[i+cols] - h)) * 0.06;
-          const shadow = shadowRaw > 0.18 ? 0.18 : shadowRaw;
-          const light = 0.72 + GNX[i] * 0.18 + GNY[i] * 0.10 - shadow;
+          // Very subtle micro-shadow + per-grain brightness variation
+          const shadowRaw = Math.max(0, (H_cur[i+1] - h) + (H_cur[i+cols] - h)) * 0.03;
+          const shadow = shadowRaw > 0.08 ? 0.08 : shadowRaw;
+          const light = 0.88 + GNX[i] * 0.12 + GNY[i] * 0.06 - shadow;
 
           const cl  = v => v < 0 ? 0 : v > 255 ? 255 : v | 0;
           const Rb  = cl(GR[i] * light);
