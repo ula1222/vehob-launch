@@ -114,42 +114,33 @@
             Math.sin(c * 0.055 + r * 0.040) * 0.13 +
             Math.sin(c * 0.110 - r * 0.075) * 0.09 +
             Math.sin(c * 0.028 + r * 0.100) * 0.05;
-          H_cur[i] = 1.0 + dune + rand(-0.04, 0.04);
-
-          // Detect logo regions (circle + V + dot) for darker powder imprint
+          // Detect logo regions — bigger size, more contrast
           const dc = c - lcx, dr = r - lcy;
 
-          // White circle part of logo (center slightly below)
-          const inCircle = Math.sqrt(dc*dc + (dr - 10*S)*(dr - 10*S)) < 30*S;
+          const inCircle = Math.sqrt(dc*dc + (dr - 12*S)*(dr - 12*S)) < 42*S;
+          const vTipY    = lcy + 20*S;
+          const inV      = distSeg(c,r, lcx-65*S, lcy-62*S, lcx, vTipY) < 15*S ||
+                           distSeg(c,r, lcx+65*S, lcy-62*S, lcx, vTipY) < 15*S;
+          const inDot    = Math.sqrt(dc*dc + (r-(lcy-70*S))*(r-(lcy-70*S))) < 10*S;
+          const inLogo   = Math.abs(dc) < 98*S && Math.abs(dr) < 98*S;
 
-          // V shape: two thick arms meeting at bottom
-          const vTipY = lcy + 15*S;
-          const inV = distSeg(c,r, lcx-48*S, lcy-48*S, lcx, vTipY) < 11*S ||
-                      distSeg(c,r, lcx+48*S, lcy-48*S, lcx, vTipY) < 11*S;
-
-          // Small dot above V
-          const inDot = Math.sqrt(dc*dc + (r-(lcy-52*S))*(r-(lcy-52*S))) < 7*S;
-
-          // Rounded-square logo boundary
-          const inLogo = Math.abs(dc) < 72*S && Math.abs(dr) < 72*S;
+          // Height: depress logo area so 3D normals carve it out visually
+          const depthFactor = (inCircle || inV) ? 0.30 : inLogo ? 0.15 : 0;
+          H_cur[i] = 1.0 + dune - depthFactor + rand(-0.03, 0.03);
 
           if (inDot) {
-            // Golden dot → warm yellow-orange powder
-            GR[i] = rand(200, 240) | 0;
-            GG[i] = rand(130, 170) | 0;
-            GB[i] = rand(0,   20)  | 0;
+            GR[i] = rand(210, 245) | 0;
+            GG[i] = rand(145, 185) | 0;
+            GB[i] = rand(0,   15)  | 0;
           } else if (inCircle || inV) {
-            // White parts of logo → very dark red powder (deep imprint)
-            GR[i] = rand(100, 155) | 0;
-            GG[i] = rand(8,   30)  | 0;
-            GB[i] = rand(0,   6)   | 0;
+            GR[i] = rand(70,  120) | 0;  // very dark — maximum contrast
+            GG[i] = rand(4,   18)  | 0;
+            GB[i] = rand(0,   4)   | 0;
           } else if (inLogo) {
-            // Logo background → medium dark red
-            GR[i] = rand(155, 200) | 0;
-            GG[i] = rand(12,  40)  | 0;
-            GB[i] = rand(0,   6)   | 0;
+            GR[i] = rand(130, 175) | 0;  // dark red background
+            GG[i] = rand(8,   28)  | 0;
+            GB[i] = rand(0,   5)   | 0;
           } else {
-            // Normal orange-red powder
             GR[i] = rand(210, 255) | 0;
             GG[i] = rand(25,  75)  | 0;
             GB[i] = rand(0,   8)   | 0;
