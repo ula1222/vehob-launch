@@ -122,11 +122,9 @@
           const inV      = distSeg(c,r, lcx-65*S, lcy-62*S, lcx, vTipY) < 15*S ||
                            distSeg(c,r, lcx+65*S, lcy-62*S, lcx, vTipY) < 15*S;
           const inDot    = Math.sqrt(dc*dc + (r-(lcy-70*S))*(r-(lcy-70*S))) < 10*S;
-          const inLogo   = Math.abs(dc) < 98*S && Math.abs(dr) < 98*S;
+          const inLogo   = Math.sqrt(dc*dc + dr*dr) < 100*S;
 
-          // Height: depress logo area so 3D normals carve it out visually
-          const depthFactor = (inCircle || inV) ? 0.30 : inLogo ? 0.15 : 0;
-          H_cur[i] = 1.0 + dune - depthFactor + rand(-0.03, 0.03);
+          H_cur[i] = 1.0 + dune + rand(-0.04, 0.04);
 
           if (inDot) {
             GR[i] = rand(210, 245) | 0;
