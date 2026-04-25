@@ -45,6 +45,14 @@
     }
     @keyframes pulse { 0%,100%{opacity:.2} 50%{opacity:.8} }
     #c { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
+    .app-icon {
+      position: fixed; left: 50%; top: 50%;
+      transform: translate(-50%, -50%);
+      width: clamp(100px, 22vw, 150px);
+      height: clamp(100px, 22vw, 150px);
+      z-index: 11; pointer-events: none;
+      filter: drop-shadow(0 8px 24px rgba(0,0,0,0.7)) drop-shadow(0 2px 6px rgba(0,0,0,0.5));
+    }
   </style>
 </head>
 <body>
@@ -52,6 +60,21 @@
     <div class="date">05.05.2026</div>
     <div class="label">Launch Date</div>
   </div>
+  <!-- App icon sitting on top of powder layer -->
+  <svg class="app-icon" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#FF7C35"/>
+        <stop offset="100%" stop-color="#E83F4E"/>
+      </linearGradient>
+    </defs>
+    <rect width="100" height="100" rx="22" fill="url(#bg)"/>
+    <circle cx="50" cy="64" r="30" fill="white"/>
+    <path d="M 22 27 L 50 67 L 78 27" stroke="white" stroke-width="13" fill="none"
+          stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="50" cy="18" r="5.5" fill="#FFD84A"/>
+  </svg>
+
   <div class="logo-wrap"><div class="logo">vehob</div></div>
   <div class="hint">swipe to reveal</div>
   <canvas id="c"></canvas>
@@ -96,15 +119,23 @@
       GNX   = new Float32Array(N); // baked normal noise X
       GNY   = new Float32Array(N); // baked normal noise Y
 
+      // Mound ring around center logo
+      const ccx = cols / 2, ccy = rows / 2;
+      const logoR  = 75 / GRID;          // logo radius in cells (~75px)
+      const moundR = logoR * 1.85;       // ring peak distance
+      const moundW = logoR * 0.65;       // ring gaussian width
+
       for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
           const i = r * cols + c;
-          // Macro dune shape via sine waves
           const dune =
             Math.sin(c * 0.055 + r * 0.040) * 0.13 +
             Math.sin(c * 0.110 - r * 0.075) * 0.09 +
             Math.sin(c * 0.028 + r * 0.100) * 0.05;
-          H_cur[i] = 1.0 + dune + rand(-0.04, 0.04);
+          // Gaussian ring mound so powder piles high around the logo
+          const dist  = Math.sqrt((c-ccx)*(c-ccx) + (r-ccy)*(r-ccy));
+          const mound = Math.exp(-Math.pow((dist - moundR) / moundW, 2)) * 0.85;
+          H_cur[i] = 1.0 + dune + mound + rand(-0.04, 0.04);
 
           // Vivid red-orange powder — high red, low green, near-zero blue
           GR[i]  = rand(210, 255) | 0;
