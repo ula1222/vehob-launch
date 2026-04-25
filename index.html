@@ -124,7 +124,9 @@
           const inDot    = Math.sqrt(dc*dc + (r-(lcy-70*S))*(r-(lcy-70*S))) < 10*S;
           const inLogo   = Math.sqrt(dc*dc + dr*dr) < 100*S;
 
-          H_cur[i] = 1.0 + dune + rand(-0.04, 0.04);
+          const distCenter = Math.sqrt(dc*dc + dr*dr) / (cols * 0.5);
+          const mound = Math.max(0, 1.0 - distCenter * 1.8) * 0.6;
+          H_cur[i] = 1.35 + dune + mound + rand(-0.04, 0.04);
 
           if (inDot) {
             GR[i] = rand(210, 245) | 0;
