@@ -9,7 +9,7 @@
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
     html, body {
       width: 100%; height: 100%; overflow: hidden;
-      background: #1a0400;
+      background: #1a0000;
       font-family: 'Inter', sans-serif;
     }
     .stage {
@@ -132,16 +132,16 @@
             GB[i] = rand(0,   15)  | 0;
           } else if (inCircle || inV) {
             GR[i] = rand(70,  120) | 0;  // very dark — maximum contrast
-            GG[i] = rand(4,   18)  | 0;
-            GB[i] = rand(0,   4)   | 0;
+            GG[i] = rand(0,   6)   | 0;
+            GB[i] = rand(0,   2)   | 0;
           } else if (inLogo) {
             GR[i] = rand(130, 175) | 0;  // dark red background
-            GG[i] = rand(8,   28)  | 0;
-            GB[i] = rand(0,   5)   | 0;
+            GG[i] = rand(0,   8)   | 0;
+            GB[i] = rand(0,   2)   | 0;
           } else {
             GR[i] = rand(210, 255) | 0;
-            GG[i] = rand(25,  75)  | 0;
-            GB[i] = rand(0,   8)   | 0;
+            GG[i] = rand(0,   15)  | 0;
+            GB[i] = rand(0,   3)   | 0;
           }
 
           // Baked per-grain normal noise for powder texture
@@ -271,10 +271,10 @@
 
           const cl  = v => v < 0 ? 0 : v > 255 ? 255 : v | 0;
           const R   = cl(GR[i] * light * hb + sp * 255);
-          const G   = cl(GG[i] * light * hb + sp * 90);
+          const G   = cl(GG[i] * light * hb + sp * 10);
           const B   = cl(GB[i] * light * hb + sp * 20);
           // Content shows through as powder scatters
-          const A   = cl(Math.min(h * 4, 1.0) * 255); // fully opaque unless actually swept
+          const A   = cl(Math.min(h, 1.0) * 255);
 
           const px0 = c * GRID, py0 = r * GRID;
           for (let dy = 0; dy < GRID; dy++) {
