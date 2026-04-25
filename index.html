@@ -107,22 +107,18 @@
           // Detect logo regions — bigger size, more contrast
           const dc = c - lcx, dr = r - lcy;
 
-          const vTipY   = lcy + 28*S;
-          const vLx = lcx - 72*S, vLy = lcy - 52*S;
-          const vRx = lcx + 72*S, vRy = lcy - 52*S;
-          // V arms with tapered width (wider at top for curved arc effect)
-          const dL = distSeg(c, r, vLx, vLy, lcx, vTipY);
-          const dR = distSeg(c, r, vRx, vRy, lcx, vTipY);
-          // compute t along each arm (0=tip, 1=top) for taper
-          const tL = Math.max(0, Math.min(1, ((c-lcx)*(vLx-lcx)+(r-vTipY)*(vLy-vTipY)) / ((vLx-lcx)**2+(vLy-vTipY)**2)));
-          const tR = Math.max(0, Math.min(1, ((c-lcx)*(vRx-lcx)+(r-vTipY)*(vRy-vTipY)) / ((vRx-lcx)**2+(vRy-vTipY)**2)));
-          const wL = (16 + tL * 20) * S;  // tapers from 16 at tip to 36 at top
-          const wR = (16 + tR * 20) * S;
-          // Rounded arc caps at the top of each arm
-          const capL = Math.sqrt((c-vLx)**2 + (r-vLy)**2) < 30*S;
-          const capR = Math.sqrt((c-vRx)**2 + (r-vRy)**2) < 30*S;
-          const inV  = dL < wL || dR < wR || capL || capR;
-          const inDot = Math.sqrt(dc*dc + (r-(lcy-58*S))*(r-(lcy-58*S))) < 14*S;
+          // Big dark circle
+          const circR   = 62*S;
+          const inCircle = Math.sqrt(dc*dc + dr*dr) < circR;
+
+          // V arms extended beyond circle — circle clips them giving curved tops naturally
+          const vTipY = lcy + 22*S;
+          const dL = distSeg(c, r, lcx - 95*S, lcy - 80*S, lcx, vTipY);
+          const dR = distSeg(c, r, lcx + 95*S, lcy - 80*S, lcx, vTipY);
+          const inVarm = dL < 12*S || dR < 12*S;
+          const inV    = inCircle && inVarm;
+
+          const inDot = Math.sqrt(dc*dc + (r-(lcy-38*S))*(r-(lcy-38*S))) < 11*S;
 
           H_cur[i] = 1.5 + dune + rand(-0.04, 0.04);
 
@@ -132,8 +128,13 @@
             GG[i] = rand(190, 230) | 0;
             GB[i] = rand(0,   20)  | 0;
           } else if (inV) {
-            // Dark red V — same family as surrounding powder
-            GR[i] = rand(85,  125) | 0;
+            // Darker red V inside circle
+            GR[i] = rand(50,  80)  | 0;
+            GG[i] = rand(0,   4)   | 0;
+            GB[i] = rand(0,   2)   | 0;
+          } else if (inCircle) {
+            // Dark red recessed circle background
+            GR[i] = rand(80,  115) | 0;
             GG[i] = rand(0,   6)   | 0;
             GB[i] = rand(0,   3)   | 0;
           } else {
