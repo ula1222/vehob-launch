@@ -274,7 +274,7 @@
           const G   = cl(GG[i] * light * hb + sp * 90);
           const B   = cl(GB[i] * light * hb + sp * 20);
           // Content shows through as powder scatters
-          const A   = cl(Math.min(h, 1.0) * 255);
+          const A   = cl(Math.min(h * 4, 1.0) * 255); // fully opaque unless actually swept
 
           const px0 = c * GRID, py0 = r * GRID;
           for (let dy = 0; dy < GRID; dy++) {
