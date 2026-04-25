@@ -45,14 +45,6 @@
     }
     @keyframes pulse { 0%,100%{opacity:.2} 50%{opacity:.8} }
     #c { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
-    .app-icon {
-      position: fixed; left: 50%; top: 50%;
-      transform: translate(-50%, -50%);
-      width: clamp(100px, 22vw, 150px);
-      height: clamp(100px, 22vw, 150px);
-      z-index: 11; pointer-events: none;
-      filter: drop-shadow(0 8px 24px rgba(0,0,0,0.7)) drop-shadow(0 2px 6px rgba(0,0,0,0.5));
-    }
   </style>
 </head>
 <body>
@@ -60,21 +52,6 @@
     <div class="date">05.05.2026</div>
     <div class="label">Launch Date</div>
   </div>
-  <!-- App icon sitting on top of powder layer -->
-  <svg class="app-icon" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-    <defs>
-      <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" stop-color="#FF7C35"/>
-        <stop offset="100%" stop-color="#E83F4E"/>
-      </linearGradient>
-    </defs>
-    <rect width="100" height="100" rx="22" fill="url(#bg)"/>
-    <circle cx="50" cy="64" r="30" fill="white"/>
-    <path d="M 22 27 L 50 67 L 78 27" stroke="white" stroke-width="13" fill="none"
-          stroke-linecap="round" stroke-linejoin="round"/>
-    <circle cx="50" cy="18" r="5.5" fill="#FFD84A"/>
-  </svg>
-
   <div class="logo-wrap"><div class="logo">vehob</div></div>
   <div class="hint">swipe to reveal</div>
   <canvas id="c"></canvas>
@@ -119,11 +96,16 @@
       GNX   = new Float32Array(N); // baked normal noise X
       GNY   = new Float32Array(N); // baked normal noise Y
 
-      // Mound ring around center logo
-      const ccx = cols / 2, ccy = rows / 2;
-      const logoR  = 75 / GRID;          // logo radius in cells (~75px)
-      const moundR = logoR * 1.85;       // ring peak distance
-      const moundW = logoR * 0.65;       // ring gaussian width
+      // Logo shape helpers (center of screen in grid coords)
+      const lcx = cols / 2, lcy = rows / 2;
+      const S = 1 / GRID; // px→cells scale
+
+      function distSeg(px, py, ax, ay, bx, by) {
+        const abx = bx-ax, aby = by-ay, len2 = abx*abx+aby*aby;
+        if (len2 === 0) return Math.sqrt((px-ax)*(px-ax)+(py-ay)*(py-ay));
+        const t = Math.max(0, Math.min(1, ((px-ax)*abx+(py-ay)*aby)/len2));
+        return Math.sqrt((px-ax-t*abx)*(px-ax-t*abx)+(py-ay-t*aby)*(py-ay-t*aby));
+      }
 
       for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
@@ -132,15 +114,46 @@
             Math.sin(c * 0.055 + r * 0.040) * 0.13 +
             Math.sin(c * 0.110 - r * 0.075) * 0.09 +
             Math.sin(c * 0.028 + r * 0.100) * 0.05;
-          // Gaussian ring mound so powder piles high around the logo
-          const dist  = Math.sqrt((c-ccx)*(c-ccx) + (r-ccy)*(r-ccy));
-          const mound = Math.exp(-Math.pow((dist - moundR) / moundW, 2)) * 0.85;
-          H_cur[i] = 1.0 + dune + mound + rand(-0.04, 0.04);
+          H_cur[i] = 1.0 + dune + rand(-0.04, 0.04);
 
-          // Vivid red-orange powder — high red, low green, near-zero blue
-          GR[i]  = rand(210, 255) | 0;
-          GG[i]  = rand(25,  75)  | 0;
-          GB[i]  = rand(0,   8)   | 0;
+          // Detect logo regions (circle + V + dot) for darker powder imprint
+          const dc = c - lcx, dr = r - lcy;
+
+          // White circle part of logo (center slightly below)
+          const inCircle = Math.sqrt(dc*dc + (dr - 10*S)*(dr - 10*S)) < 30*S;
+
+          // V shape: two thick arms meeting at bottom
+          const vTipY = lcy + 15*S;
+          const inV = distSeg(c,r, lcx-48*S, lcy-48*S, lcx, vTipY) < 11*S ||
+                      distSeg(c,r, lcx+48*S, lcy-48*S, lcx, vTipY) < 11*S;
+
+          // Small dot above V
+          const inDot = Math.sqrt(dc*dc + (r-(lcy-52*S))*(r-(lcy-52*S))) < 7*S;
+
+          // Rounded-square logo boundary
+          const inLogo = Math.abs(dc) < 72*S && Math.abs(dr) < 72*S;
+
+          if (inDot) {
+            // Golden dot → warm yellow-orange powder
+            GR[i] = rand(200, 240) | 0;
+            GG[i] = rand(130, 170) | 0;
+            GB[i] = rand(0,   20)  | 0;
+          } else if (inCircle || inV) {
+            // White parts of logo → very dark red powder (deep imprint)
+            GR[i] = rand(100, 155) | 0;
+            GG[i] = rand(8,   30)  | 0;
+            GB[i] = rand(0,   6)   | 0;
+          } else if (inLogo) {
+            // Logo background → medium dark red
+            GR[i] = rand(155, 200) | 0;
+            GG[i] = rand(12,  40)  | 0;
+            GB[i] = rand(0,   6)   | 0;
+          } else {
+            // Normal orange-red powder
+            GR[i] = rand(210, 255) | 0;
+            GG[i] = rand(25,  75)  | 0;
+            GB[i] = rand(0,   8)   | 0;
+          }
 
           // Baked per-grain normal noise for powder texture
           GNX[i] = rand(-1, 1);
