@@ -110,12 +110,12 @@
       for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
           const i = r * cols + c;
-          // Multi-octave interference pattern — organic sand ripple texture
-          const w1 = Math.sin(c * 0.18 + r * 0.24 + 1.1) * Math.cos(c * 0.07 - r * 0.13);
-          const w2 = Math.sin(c * 0.31 - r * 0.19 + 2.3) * Math.cos(c * 0.22 + r * 0.28);
-          const w3 = Math.sin(c * 0.44 + r * 0.11 + 0.7) * 0.5 + Math.sin(c * 0.09 - r * 0.38 + 3.1) * 0.5;
-          const w4 = Math.sin(Math.sin(c * 0.06 + r * 0.05) * 4.0 + c * 0.13) * 0.5;
-          const dune = w1 * 0.05 + w2 * 0.04 + w3 * 0.04 + w4 * 0.03;
+          // 4 diagonal waves
+          const w1 = Math.sin((c + r) * 0.08) * 0.06;
+          const w2 = Math.sin((c - r) * 0.08 + 1.5) * 0.06;
+          const w3 = Math.sin((c + r) * 0.18 + 0.8) * 0.04;
+          const w4 = Math.sin((c - r) * 0.18 + 3.0) * 0.04;
+          const dune = w1 + w2 + w3 + w4;
           // Detect logo regions — bigger size, more contrast
           const dc = c - lcx, dr = r - lcy;
 
