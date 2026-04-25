@@ -62,7 +62,7 @@
     let W, H, cols, rows, N, imgData;
 
     // ── Grid ─────────────────────────────────────────────────────────
-    const GRID       = 2;    // px per cell — finer grain
+    const GRID       = 3;    // px per cell
     const PUSH_R     = 90;   // medium brush
     const PUSH_FORCE = 5.0;  // edge scatter force
     const FRICTION   = 0.88;
@@ -100,12 +100,7 @@
       for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
           const i = r * cols + c;
-          // Macro dune shape for height
-          const dune =
-            Math.sin(c * 0.055 + r * 0.040) * 0.13 +
-            Math.sin(c * 0.110 - r * 0.075) * 0.09 +
-            Math.sin(c * 0.028 + r * 0.100) * 0.05;
-          H_cur[i] = 1.0 + dune + rand(-0.04, 0.04);
+          H_cur[i] = 1.0 + rand(-0.02, 0.02); // flat start — no waves, no dark patches
 
           // Pure per-grain random — no macro waves, no blobs
           GR[i]  = rand(205, 255) | 0;
@@ -216,24 +211,21 @@
           const i = r * cols + c;
           const h = H_cur[i];
 
-          // Per-grain brightness only — no shadows, no macro lighting
-          const light = GNX[i];
-
           const cl  = v => v < 0 ? 0 : v > 255 ? 255 : v | 0;
-          const Rb  = cl(GR[i] * light);
-          const Gb  = cl(GG[i] * light);
-          const Bb  = cl(GB[i] * light);
-          const A   = cl(Math.min(h, 1.0) * 255);
+          // Steep alpha: fully opaque when powder present, only fades near h=0
+          const A   = cl(Math.min(h * 6, 1.0) * 255);
 
           const px0 = c * GRID, py0 = r * GRID;
           for (let dy = 0; dy < GRID; dy++) {
             let pi = ((py0+dy) * W + px0) * 4;
             for (let dx = 0; dx < GRID; dx++, pi += 4) {
-              // Sub-pixel noise makes each pixel within a cell slightly different
-              const pn = PN[(py0+dy) * W + (px0+dx)] / 252;
-              data[pi]   = cl(Rb * pn);
-              data[pi+1] = cl(Gb * pn);
-              data[pi+2] = cl(Bb * pn);
+              // Bump: center of 3x3 grain = bright highlight, edges = shadow → rounded 3D grain
+              const cx = dx - 1, cy = dy - 1; // offset from center (-1,0,1)
+              const bump = 1.0 - (cx*cx + cy*cy) * 0.07; // 1.0 center, ~0.86 corners
+              const light = GNX[i] * bump;
+              data[pi]   = cl(GR[i] * light);
+              data[pi+1] = cl(GG[i] * light);
+              data[pi+2] = cl(GB[i] * light);
               data[pi+3] = A;
             }
           }
