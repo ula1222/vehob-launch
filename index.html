@@ -217,9 +217,10 @@
           const i = r * cols + c;
           const h = H_cur[i];
 
-          // Surface normal from height gradient + per-grain noise
-          const gx = (H_cur[i+1]    - H_cur[i-1])    * NORM_SCALE + GNX[i] * GRAIN_NS;
-          const gy = (H_cur[i+cols] - H_cur[i-cols]) * NORM_SCALE + GNY[i] * GRAIN_NS;
+          // Surface normal — scale gradient by h so cleared edges stay flat (no bright rim)
+          const hs = Math.min(h, 1.0);
+          const gx = (H_cur[i+1]    - H_cur[i-1])    * NORM_SCALE * hs + GNX[i] * GRAIN_NS;
+          const gy = (H_cur[i+cols] - H_cur[i-cols]) * NORM_SCALE * hs + GNY[i] * GRAIN_NS;
           const gz = 1.0;
           const gl  = Math.sqrt(gx*gx + gy*gy + gz*gz);
           const nx  = -gx/gl, ny = -gy/gl, nz = gz/gl;
