@@ -110,11 +110,15 @@
       for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
           const i = r * cols + c;
-          // 4 diagonal waves
-          const w1 = Math.sin((c + r) * 0.08) * 0.06;
-          const w2 = Math.sin((c - r) * 0.08 + 1.5) * 0.06;
-          const w3 = Math.sin((c + r) * 0.18 + 0.8) * 0.04;
-          const w4 = Math.sin((c - r) * 0.18 + 3.0) * 0.04;
+          // 4 big diagonal waves — 2 left of logo, 2 right of logo
+          const bw  = cols * 0.13;
+          const lx1 = lcx - cols * 0.32, lx2 = lcx - cols * 0.13;
+          const rx1 = lcx + cols * 0.13, rx2 = lcx + cols * 0.32;
+          const g = (cx) => Math.exp(-0.5 * ((c - cx) / bw) ** 2);
+          const w1 = g(lx1) * Math.sin((c + r) * 0.13 + 0.0) * 0.25;
+          const w2 = g(lx2) * Math.sin((c - r) * 0.13 + 1.6) * 0.25;
+          const w3 = g(rx1) * Math.sin((c + r) * 0.13 + 3.2) * 0.25;
+          const w4 = g(rx2) * Math.sin((c - r) * 0.13 + 4.8) * 0.25;
           const dune = w1 + w2 + w3 + w4;
           // Detect logo regions — bigger size, more contrast
           const dc = c - lcx, dr = r - lcy;
@@ -126,7 +130,7 @@
           const inDot    = Math.sqrt(dc*dc + (r-(lcy-70*S))*(r-(lcy-70*S))) < 10*S;
           const inLogo   = Math.sqrt(dc*dc + dr*dr) < 100*S;
 
-          H_cur[i] = 1.35 + dune + rand(-0.04, 0.04);
+          H_cur[i] = 1.5 + dune + rand(-0.04, 0.04);
 
           if (inDot) {
             GR[i] = rand(210, 245) | 0;
