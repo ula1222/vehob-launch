@@ -217,10 +217,10 @@
           const i = r * cols + c;
           const h = H_cur[i];
 
-          // Surface normal — scale gradient by h so cleared edges stay flat (no bright rim)
-          const hs = Math.min(h, 1.0);
-          const gx = (H_cur[i+1]    - H_cur[i-1])    * NORM_SCALE * hs + GNX[i] * GRAIN_NS;
-          const gy = (H_cur[i+cols] - H_cur[i-cols]) * NORM_SCALE * hs + GNY[i] * GRAIN_NS;
+          // Clamp raw gradient so sharp clear/full boundaries can't produce extreme normals
+          const clampG = v => v > 0.3 ? 0.3 : v < -0.3 ? -0.3 : v;
+          const gx = clampG(H_cur[i+1]    - H_cur[i-1])    * NORM_SCALE + GNX[i] * GRAIN_NS;
+          const gy = clampG(H_cur[i+cols] - H_cur[i-cols]) * NORM_SCALE + GNY[i] * GRAIN_NS;
           const gz = 1.0;
           const gl  = Math.sqrt(gx*gx + gy*gy + gz*gz);
           const nx  = -gx/gl, ny = -gy/gl, nz = gz/gl;
@@ -232,7 +232,7 @@
           // Specular (Blinn-Phong — powder has soft sheen)
           const hx = nlx, hy = nly, hz = nlz + 1;
           const hl  = Math.sqrt(hx*hx + hy*hy + hz*hz);
-          const sp  = Math.pow(Math.max(0, nx*(hx/hl)+ny*(hy/hl)+nz*(hz/hl)), 22) * 0.7;
+          const sp  = Math.pow(Math.max(0, nx*(hx/hl)+ny*(hy/hl)+nz*(hz/hl)), 40) * 0.25;
 
           // Slight height boost for piled areas
           const hb = h > 1.05 ? 1 + (h-1)*0.3 : 1.0;
