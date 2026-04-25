@@ -67,8 +67,8 @@
     const PUSH_FORCE = 5.0;  // edge scatter force
     const FRICTION   = 0.88;
     const FLOW       = 0.40;
-    const NORM_SCALE = 7;
-    const GRAIN_NS   = 0.5;
+    const NORM_SCALE = 3.5;
+    const GRAIN_NS   = 0.25;
 
     let H_cur, H_nxt, VX, VY, GR, GG, GB, GNX, GNY;
 
@@ -106,10 +106,10 @@
             Math.sin(c * 0.028 + r * 0.100) * 0.05;
           H_cur[i] = 1.0 + dune + rand(-0.04, 0.04);
 
-          // Warm powder colors — bright orange/red range
-          GR[i]  = rand(185, 255) | 0;
-          GG[i]  = rand(65,  145) | 0;
-          GB[i]  = rand(0,   18)  | 0;
+          // Vivid red-orange powder — high red, low green, near-zero blue
+          GR[i]  = rand(210, 255) | 0;
+          GG[i]  = rand(25,  75)  | 0;
+          GB[i]  = rand(0,   8)   | 0;
 
           // Baked per-grain normal noise for powder texture
           GNX[i] = rand(-1, 1);
@@ -238,8 +238,8 @@
 
           const cl  = v => v < 0 ? 0 : v > 255 ? 255 : v | 0;
           const R   = cl(GR[i] * light * hb + sp * 255);
-          const G   = cl(GG[i] * light * hb + sp * 210);
-          const B   = cl(GB[i] * light * hb + sp * 170);
+          const G   = cl(GG[i] * light * hb + sp * 90);
+          const B   = cl(GB[i] * light * hb + sp * 20);
           // Content shows through as powder scatters
           const A   = cl(Math.min(h, 1.0) * 255);
 
