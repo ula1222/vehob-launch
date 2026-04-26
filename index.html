@@ -330,6 +330,14 @@
     window.addEventListener('touchmove',   e => { e.preventDefault(); onMove(e.touches[0].clientX, e.touches[0].clientY); }, { passive: false });
     window.addEventListener('touchend',    onEnd);
     window.addEventListener('resize',      build);
+
+    // Single click/tap clears all powder instantly
+    window.addEventListener('click', () => {
+      wavesActive = false;
+      H_cur.fill(0);
+      VX.fill(0);
+      VY.fill(0);
+    });
   </script>
 </body>
 </html>
