@@ -58,7 +58,7 @@
     const PUSH_FORCE = 5.0;  // edge scatter force
     const FRICTION   = 0.88;
     const FLOW       = 0.40;
-    const NORM_SCALE = 8.0;
+    const NORM_SCALE = 12.0;
     const GRAIN_NS   = 0.25;
 
     let H_cur, H_nxt, VX, VY, GR, GG, GB, GNX, GNY;
@@ -111,7 +111,7 @@
         for (let c = 0; c < cols; c++) {
           const i = r * cols + c;
           // 4 parallel diagonal waves (NE→SW, no crossing)
-          const dune = Math.sin((c + r) * 0.018) * 0.30;
+          const dune = Math.sin((c + r) * 0.018) * 0.50;
           // Detect logo regions — bigger size, more contrast
           const dc = c - lcx, dr = r - lcy;
 
@@ -258,7 +258,7 @@
 
           // Diffuse (Lambert)
           const ndl   = nx*nlx + ny*nly + nz*nlz;
-          const light = 0.22 + 0.78 * Math.max(0, ndl);
+          const light = 0.10 + 0.90 * Math.max(0, ndl);
 
           // Specular (Blinn-Phong — powder has soft sheen)
           const hx = nlx, hy = nly, hz = nlz + 1;
@@ -297,7 +297,7 @@
       for (let r = 1; r < rows-1; r++) {
         for (let c = 1; c < cols-1; c++) {
           const i = r * cols + c;
-          const target = 1.5 + Math.sin((c + r) * 0.018 + waveTime) * 0.30;
+          const target = 1.5 + Math.sin((c + r) * 0.018 + waveTime) * 0.50;
           H_cur[i] += (target - H_cur[i]) * 0.03;
         }
       }
