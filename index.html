@@ -331,13 +331,28 @@
     window.addEventListener('touchend',    onEnd);
     window.addEventListener('resize',      build);
 
-    // Single click/tap clears all powder instantly
-    window.addEventListener('click', () => {
+    // Single click/tap: radial burst from that point
+    function burst(px, py) {
       wavesActive = false;
-      H_cur.fill(0);
-      VX.fill(0);
-      VY.fill(0);
-    });
+      const cx = (px / GRID) | 0;
+      const cy = (py / GRID) | 0;
+      const br = (160 / GRID) | 0;
+      for (let dy = -br; dy <= br; dy++) {
+        for (let dx = -br; dx <= br; dx++) {
+          const nc = cx+dx, nr = cy+dy;
+          if (nc<1||nc>=cols-1||nr<1||nr>=rows-1) continue;
+          const d2 = dx*dx+dy*dy;
+          if (d2 >= br*br || d2 === 0) continue;
+          const d = Math.sqrt(d2);
+          const idx = nr*cols+nc;
+          const force = (1 - d/br) * 14.0;
+          VX[idx] += (dx/d) * force;
+          VY[idx] += (dy/d) * force;
+        }
+      }
+    }
+    window.addEventListener('click', e => burst(e.clientX, e.clientY));
+    window.addEventListener('touchstart', e => { burst(e.touches[0].clientX, e.touches[0].clientY); }, { passive: true });
   </script>
 </body>
 </html>
