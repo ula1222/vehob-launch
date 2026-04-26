@@ -269,9 +269,9 @@
           const hb = h > 1.05 ? 1 + (h-1)*1.0 : 1.0;
 
           const cl  = v => v < 0 ? 0 : v > 255 ? 255 : v | 0;
-          const R   = cl(GR[i] * light * hb + sp * 255);
-          const G   = cl(GG[i] * light * hb + sp * 10);
-          const B   = cl(GB[i] * light * hb + sp * 20);
+          const R   = cl(GR[i] * light * hb);
+          const G   = cl(GG[i] * light * hb);
+          const B   = cl(GB[i] * light * hb);
           // Content shows through as powder scatters
           const A   = cl(Math.min(h, 1.0) * 255);
 
